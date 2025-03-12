@@ -1,0 +1,239 @@
+﻿@using Azure.Storage.Blobs
+@using System.Text
+@using Azure.Storage.Blobs.Models
+@using PersonalDataWarehouse.Model
+@using PersonalDataWarehouse.Services
+@using static PersonalDataWarehouse.Services.SettingsService
+@inject LogService _LogService
+<div>
+    <h5 style="color:red">@strStatusMessage</h5>
+    <table class="form-group" cellpadding="4" cellspacing="4" style="width:100%">
+        <tbody>
+            <tr>
+                <td style="text-align: right">
+                    <label for="StorageAccountName" class="control-label" style="font-weight: bold">Storage Account: </label>
+                </td>
+                <td>
+                    <input type="text" id="StorageAccountName" class="form-control" @bind="StorageAccountName" />
+                </td>
+            </tr>
+            <tr>
+                <td style="text-align: right">
+                    <label for="ContainerName" class="control-label" style="font-weight: bold">Container: </label>
+                </td>
+                <td>
+                    <input type="text" id="ContainerName" class="form-control" @bind="ContainerName" />
+                </td>
+            </tr>
+            <tr>
+                <td style="text-align: right">
+                    <label for="AccountKey" class="control-label" style="font-weight: bold">Account Key: </label>
+                </td>
+                <td>
+                    <input type="password" id="AccountKey" class="form-control" @bind="AccountKey" />
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    <br />
+    <table class="form-group" cellpadding="4" cellspacing="4">
+        <tbody>
+            <tr>
+                <td>
+                    @if (!boolProcessing)
+                    {
+                        <button @onclick="() => SetConnection()">
+                            Set Storage Connection
+                        </button>
+                        <span>&nbsp;</span>
+                        <button @onclick="() => ShowDeleteConfirmation = true">
+                            Clear Connection
+                        </button>
+                    }
+                    else
+                    {
+                        <br />
+                        <div role="progressbar" class="marquee"></div>
+                    }
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+@if (ShowDeleteConfirmation)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Confirm Delete</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseDeleteConfirmationPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="() => ClearConnection()">Yes</button>
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="CloseDeleteConfirmationPopup">No</button>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+@code {
+    #nullable disable
+    [Parameter] public string StorageAccountName { get; set; }
+    [Parameter] public string ContainerName { get; set; }
+    [Parameter] public string AccountKey { get; set; } = "";
+
+    private bool boolProcessing { get; set; } = false;
+    private string strStatusMessage { get; set; } = "";
+    private string StorageConnectionString { get; set; } = "";
+
+    private bool ShowDeleteConfirmation { get; set; } = false;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+    }
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        base.OnAfterRender(firstRender);
+    }
+
+    private async Task SetConnection()
+    {
+        boolProcessing = true;
+        strStatusMessage = "";
+
+        try
+        {
+            string storageConnectionString = $"DefaultEndpointsProtocol=https;AccountName={StorageAccountName};AccountKey={AccountKey};EndpointSuffix=core.windows.net";
+            var blobServiceClient = new BlobServiceClient(storageConnectionString);
+            BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(ContainerName);
+
+            // Attempt to retrieve properties to check if connection is valid
+            // This will throw an exception if the connection is invalid
+            BlobContainerProperties properties = await containerClient.GetPropertiesAsync();
+
+            // Update Settings
+            var settingsService = new SettingsService();
+
+            // Grab existing ApplicationSettings
+            var applicationSettings = settingsService.Settings.ApplicationSettings;
+
+            // Grab the entire connection list from the settings
+            var connectionList = settingsService.Settings.ConnectionSettings;
+
+            var AzureStorageConnection = connectionList
+            .Where(c => c.ConnectionType == ConnectionType.AzureStorage)
+            .Select(c => c)
+            .OrderBy(c => c.DatabaseServerSettings.ServerName)
+            .FirstOrDefault();
+
+            if (AzureStorageConnection == null)
+            {
+                // Create a new connection entry
+                AzureStorageConnection = new SettingsService.ConnectionSettings
+                    {
+                        ConnectionType = ConnectionType.AzureStorage,
+                        DatabaseServerSettings = new SettingsService.DatabaseServerSettings()
+                    };
+
+                connectionList.Add(AzureStorageConnection);
+
+                // Update its properties
+                AzureStorageConnection.AzureStorageSettings = new SettingsService.AzureStorageSettings();
+                AzureStorageConnection.AzureStorageSettings.StorageAccountName = StorageAccountName;
+                AzureStorageConnection.AzureStorageSettings.ContainerName = ContainerName;
+            }
+            else
+            {
+                // Update its properties
+                AzureStorageConnection.AzureStorageSettings.StorageAccountName = StorageAccountName;
+                AzureStorageConnection.AzureStorageSettings.ContainerName = ContainerName;
+            }
+
+            // Save the settings
+            await settingsService.UpdateSettingsAsync(applicationSettings, connectionList);
+
+            // Save the Azure Storage AccountKey securely
+            await SecureStorage.Default.SetAsync($"AzureStorageAccountKey", AccountKey.Trim());
+
+            StorageConnectionString = storageConnectionString;
+            strStatusMessage = "Connection successful!";
+        }
+        catch (Exception ex)
+        {
+            strStatusMessage = $"Connection failed: {ex.Message}";
+            await _LogService.WriteToLogAsync(strStatusMessage);
+        }
+
+        boolProcessing = false;
+        StateHasChanged();
+    }
+
+    private async Task ClearConnection()
+    {
+        boolProcessing = true;
+        strStatusMessage = "";
+        try
+        {
+            // Update Settings
+            var settingsService = new SettingsService();
+
+            // Grab existing ApplicationSettings
+            var applicationSettings = settingsService.Settings.ApplicationSettings;
+
+            // Grab the entire connection list from the settings
+            var connectionList = settingsService.Settings.ConnectionSettings;
+            var AzureStorageConnection = connectionList
+            .Where(c => c.ConnectionType == ConnectionType.AzureStorage)
+            .Select(c => c)
+            .OrderBy(c => c.DatabaseServerSettings.ServerName)
+            .FirstOrDefault();
+
+            if (AzureStorageConnection != null)
+            {
+                connectionList.Remove(AzureStorageConnection);
+            }
+
+            // Save the settings
+            await settingsService.UpdateSettingsAsync(applicationSettings, connectionList);
+
+            // Clear the Azure Storage AccountKey securely
+            SecureStorage.Default.Remove("AzureStorageAccountKey");
+
+            ShowDeleteConfirmation = false;
+            StorageConnectionString = "";
+            strStatusMessage = "Connection cleared!";
+        }
+        catch (Exception ex)
+        {
+            strStatusMessage = $"Connection clear failed: {ex.Message}";
+            await _LogService.WriteToLogAsync(strStatusMessage);
+        }
+        boolProcessing = false;
+        StateHasChanged();
+    }
+
+    private void CloseDeleteConfirmationPopup()
+    {
+        ShowDeleteConfirmation = false;
+        StateHasChanged();
+    }
+}

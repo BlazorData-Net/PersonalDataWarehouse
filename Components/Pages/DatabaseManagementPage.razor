@@ -1,0 +1,460 @@
+﻿@using System.Text
+@using PersonalDataWarehouse.Services
+@using PersonalDataWarehouse.Model
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+@inject DatabaseService databaseService
+@inject LogService _LogService
+
+<div class="row">
+    <div class="col">
+        @if (DatabaseList.Count > 0)
+        {
+            <label>Database: </label>
+            <select @onchange="@(async (args) =>
+                    {
+                        CurrentDatabaseName = args.Value?.ToString();
+                    })">
+                @foreach (var database in DatabaseList)
+                {
+                    <option value="@database"
+                    selected="@(database == CurrentDatabaseName ? "selected" : null)">
+                        @database
+                    </option>
+                }
+            </select>
+        }
+    </div>
+</div>
+<br />
+<div class="row">
+    <div class="col">
+        <button @onclick="()=> NewDatabase()">
+            New Database
+        </button>
+        <span>&nbsp; &nbsp;</span>
+        @if (CurrentDatabaseName != "Default")
+        {
+            <button @onclick="()=> DeleteDatabasePopup()">
+                Delete Database
+            </button>
+            <span>&nbsp; &nbsp;</span>
+            <button @onclick="()=> RenameDatabase()">
+                Rename Database
+            </button>
+            <span>&nbsp; &nbsp;</span>
+        }
+        <button @onclick="()=> ExportDatabase()">
+            Export Database
+        </button>
+        <span>&nbsp; &nbsp;</span>
+        <button @onclick="()=> UploadDatabase()">
+            Upload Database
+        </button>
+        <span>&nbsp; &nbsp;</span>
+    </div>
+</div>
+<br />
+<!-- POPUPS -->
+@if (DatabasePopupVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">@DatabasePopupLabel</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseNewDatabasePopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <form @onsubmit="SaveDatabase">
+                            <div>
+                                <label for="tableName">Database Name:</label>
+                                <input type="text" id="tableName" maxlength="20" style="width: 200px;" @bind="TempDatabaseName" />
+                                <br /><br />
+                                <button type="submit">Submit</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (Message != "")
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Alert!</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseMessagePopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <div class="has-scrollbar" style="width: 100%; height: 100px; overflow: auto">
+                            @Message
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (ShowDeleteConfirmation)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">@($"Confirm Delete of {CurrentDatabaseName}?")</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseDeleteConfirmationPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="DeleteDatabase">Yes</button>
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="CloseDeleteConfirmationPopup">No</button>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+@code {
+    private List<string> DatabaseList = new List<string>();
+    private string CurrentDatabaseName = "Default";
+    private string TempDatabaseName = string.Empty;
+    private string PreviousDatabaseName = string.Empty;
+
+    private string Message = string.Empty;
+    private string DatabasePopupLabel = string.Empty;
+
+    bool DatabasePopupVisible = false;
+    bool ShowDeleteConfirmation = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        DatabaseList = await databaseService.GetAllDatabasesAsync();
+    }
+
+    private void NewDatabase()
+    {
+        try
+        {
+            DatabasePopupLabel = "New Database";
+            DatabasePopupVisible = true;
+        }
+        catch (Exception ex)
+        {
+            Message = ex.Message;
+            _LogService.WriteToLog(Message);
+        }
+    }
+
+    private async Task SaveDatabase()
+    {
+        try
+        {
+            PreviousDatabaseName = CurrentDatabaseName;
+
+            // Validate that the name is not empty
+            if (string.IsNullOrEmpty(TempDatabaseName.Trim()))
+            {
+                Message = "Database Name is required";
+                return;
+            }
+
+            // Remove spaces and special characters from TempDatabaseName
+            TempDatabaseName = databaseService.RemoveSpacesSpecialCharacters(TempDatabaseName);
+
+            // Validate TempDatabaseName
+            if (!IsDatabaseNameValid(TempDatabaseName))
+            {
+                Message = "Valid Database Name is required";
+                return;
+            }
+
+            // Check that the name is not already in use
+            if (DatabaseList.Any(db => db.Equals(TempDatabaseName, StringComparison.OrdinalIgnoreCase)))
+            {
+                Message = $"The {TempDatabaseName} Database Name is already in use";
+                return;
+            }
+
+            // Create or update the Database
+
+            // Update and generrate Confirmation Message
+            string ConfimationMessage = string.Empty;
+
+            if (DatabasePopupLabel == "New Database")
+            {
+                ConfimationMessage = $"{TempDatabaseName} Created!";
+                databaseService.CreateDatabase(TempDatabaseName);
+            }
+            else
+            {
+                ConfimationMessage = $"{PreviousDatabaseName} Renamed to {TempDatabaseName}!";
+                databaseService.UpdateDatabase(PreviousDatabaseName, TempDatabaseName);
+            }
+
+            // Update the Database List            
+            DatabaseList = await databaseService.GetAllDatabasesAsync();
+
+            // Select the new database in the dropdown
+            CurrentDatabaseName = TempDatabaseName;
+
+            // Clear TempDatabaseName
+
+            DatabasePopupVisible = false;
+
+            NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Success",
+                    Detail = ConfimationMessage,
+                    Duration = 4000
+                });
+        }
+        catch (Exception ex)
+        {
+            Message = ex.Message;
+            await _LogService.WriteToLogAsync(Message);
+        }
+    }
+
+    private async Task DeleteDatabase()
+    {
+        try
+        {
+            databaseService.DeleteDatabase(CurrentDatabaseName);
+
+            ShowDeleteConfirmation = false;
+
+            string ConfimationMessage = $"{CurrentDatabaseName} Deleted!";
+
+            NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Success",
+                    Detail = ConfimationMessage,
+                    Duration = 4000
+                });
+
+            // Reload the Database List
+            DatabaseList = await databaseService.GetAllDatabasesAsync();
+            CurrentDatabaseName = "Default";
+        }
+        catch (Exception ex)
+        {
+            Message = ex.Message;
+            await _LogService.WriteToLogAsync(Message);
+        }
+    }
+
+    private async Task ExportDatabase()
+    {
+        try
+        {          
+            NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Info,
+                    Summary = "Exporting",
+                    Detail = $"Database...",
+                    Duration = 2000
+                });
+
+            var ZipContents = databaseService.ExportDatabase(CurrentDatabaseName);
+
+            // Read DocumentContents into a MemoryStream
+            var stream = new MemoryStream(ZipContents);
+
+            string ExportFileName = $"{CurrentDatabaseName}_{DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss")}.pdw";
+
+            var picker = new Windows.Storage.Pickers.FileSavePicker
+            {
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads
+            };
+
+            picker.FileTypeChoices.Add("All Files", new List<string> { ".pdw" });
+            picker.SuggestedFileName = ExportFileName;
+
+            var hwnd = ((MauiWinUIWindow)App.Current.Windows[0].Handler.PlatformView).WindowHandle;
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+            var fileSaverResult = await picker.PickSaveFileAsync();
+
+            if (fileSaverResult != null)
+            {
+                // Convert the MemoryStream to a byte array
+                byte[] fileContent = stream.ToArray();
+
+                // Write the content to the selected path
+                await File.WriteAllBytesAsync(fileSaverResult.Path, fileContent);
+
+                NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Success,
+                        Summary = "Saved",
+                        Detail = $"The file was saved successfully.",
+                        Duration = 4000
+                    });
+            }
+            else
+            {
+                NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Error,
+                        Summary = "Error",
+                        Detail = $"The file was not saved.",
+                        Duration = 4000
+                    });
+            }
+        }
+        catch (Exception ex)
+        {
+            Message = ex.Message;
+            await _LogService.WriteToLogAsync(Message);
+        }
+    }
+
+    private void RenameDatabase()
+    {
+        try
+        {
+            DatabasePopupLabel = $"Rename {CurrentDatabaseName}";
+            DatabasePopupVisible = true;
+        }
+        catch (Exception ex)
+        {
+            Message = ex.Message;
+            _LogService.WriteToLog(Message);
+        }
+    }
+
+    private async Task UploadDatabase()
+    {
+        try
+        {
+            var result = await FilePicker.PickAsync(new PickOptions
+                {
+                    FileTypes = new FilePickerFileType(new Dictionary<DevicePlatform, IEnumerable<string>>
+                {
+                    { DevicePlatform.iOS, new[] { "public.content" } },
+                    { DevicePlatform.Android, new[] { "application/*" } },
+                    { DevicePlatform.WinUI, new[] { ".pdw" } }, })
+                });
+
+            if (result != null)
+            {
+                byte[] DatabaseFileBytes = null;
+
+                // Open a stream for the selected file
+                using (var stream = await result.OpenReadAsync())
+                {
+                    // Create a memory stream to copy the file stream
+                    using (var memoryStream = new MemoryStream())
+                    {
+                        // Copy the file stream to the memory stream
+                        await stream.CopyToAsync(memoryStream);
+
+                        // Return the byte array
+                        DatabaseFileBytes = memoryStream.ToArray();
+                    }
+                }
+
+                string ImportResult = databaseService.ImportDatabase(CurrentDatabaseName, DatabaseFileBytes);
+
+                if (ImportResult != "")
+                {
+                    NotificationService.Notify(new NotificationMessage
+                        {
+                            Severity = NotificationSeverity.Info,
+                            Summary = "Import Result",
+                            Detail = ImportResult,
+                            Duration = 4000
+                        });
+
+                        return;
+                }
+
+                NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Success,
+                        Summary = "Upload",
+                        Detail = $"Database imported successfully.",
+                        Duration = 4000
+                    });
+            }
+            else
+            {
+                NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Error,
+                        Summary = "Error",
+                        Detail = $"The file was not saved.",
+                        Duration = 4000
+                    });
+            }
+        }
+        catch (Exception ex)
+        {
+            Message = ex.Message;
+            await _LogService.WriteToLogAsync(Message);
+        }
+    }
+
+    // POPUP METHODS
+
+    private void DeleteDatabasePopup()
+    {
+        ShowDeleteConfirmation = true;
+    }
+
+    private void CloseNewDatabasePopup()
+    {
+        DatabasePopupVisible = false;
+    }
+
+    private void CloseMessagePopup()
+    {
+        Message = String.Empty;
+    }
+
+    private void CloseDeleteConfirmationPopup()
+    {
+        ShowDeleteConfirmation = false;
+    }
+
+    // Utility
+
+    bool IsDatabaseNameValid(string databaseName)
+    {
+        // Validate that length is less than 20 characters
+        if (databaseName.Length > 20)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+}

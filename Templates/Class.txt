@@ -1,0 +1,39 @@
+namespace Controllers
+{
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using static PersonalDataWarehouse.MauiProgram;
+
+    **CLASS DEFINITION**
+    public class **CLASS UPPERCASE WITH AN S** 
+    {
+        public List<**CLASS NAME**> **CLASS LOWERCASE WITH AN S**()
+        {
+            // Create a Dataloader
+            Dataloader objDataloader = new Dataloader();
+
+            // Call LoadParquet to load data into col**CLASS NAME**
+            var col**CLASS NAME** = objDataloader.LoadParquet("**DATABASE NAME**","**FILE NAME**").Result;
+
+            // Convert each row into a Dictionary<string, object>, then map that
+            // into a new **CLASS NAME** object, using the index as the Id.
+            var results = col**CLASS NAME**
+                .Select((row, index) =>
+                {
+                    var dict = row.ToDictionary();
+
+                    return new **CLASS NAME**
+                    {
+                        // index is zero-based; add 1 if you want a one-based ID
+                        Id = index + 1,
+**DICTIONARY MAPPING**
+                    };
+                })
+                .ToList();
+
+            return results;
+        }
+
+    }
+}

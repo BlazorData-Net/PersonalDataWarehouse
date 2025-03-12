@@ -1,0 +1,30 @@
+﻿@page "/clouddatapage"
+@using System.Text.Json
+@using System.Text
+@using KustoLoco.Core
+@using KustoLoco.Core.Console
+@using KustoLoco.Core.DataSource
+@using KustoLoco.Core.DataSource.Columns
+@using KustoLoco.Core.Settings
+@using KustoLoco.Rendering
+@using Microsoft.Extensions.AI
+@using System.Diagnostics.CodeAnalysis
+@using PersonalDataWarehouse.AI
+@using PersonalDataWarehouse.Services
+@using PersonalDataWarehouse.Components.Pages.SQLDataEditor
+@using MonacoRazor
+@using System.Data
+@using System.Diagnostics
+@inject DatabaseService databaseService
+@inject DataService DataService
+@inject SettingsService SettingsService
+@inject OrchestratorMethods OrchestratorMethods
+@inject IJSRuntime JS
+<PageTitle>Cloud Data</PageTitle>
+<h4>Cloud Data</h4>
+<br />
+<SQLDataEditor></SQLDataEditor>
+
+@code {
+
+}

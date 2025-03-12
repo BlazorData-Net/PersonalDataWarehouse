@@ -1,0 +1,1850 @@
+﻿@page "/reports"
+@using System.Text.Json
+@using System.Linq.Dynamic.Core
+@using CSScriptLib
+@using System.Reflection
+@using Microsoft.Reporting.NETCore
+@using PersonalDataWarehouse.AI
+@using PersonalDataWarehouse.Services
+@using System.Dynamic
+@using System.Data
+@using PersonalDataWarehouse.Model
+@inject IJSRuntime jsRuntime
+@inject DatabaseService databaseService
+@inject DataService DataService
+@inject SettingsService SettingsService
+@inject OrchestratorMethods OrchestratorMethods
+@inject LogService _LogService
+
+<PageTitle>Reports</PageTitle>
+
+<h4>Reports</h4>
+<br />
+<!-- REPORT DROPDOWN -->
+<div>
+    @if (ReportList.Count > 0)
+    {
+        <label>Select Report: </label>
+        <select @onchange="@(async (args) =>
+                    {
+                        CurrentReportName = args.Value?.ToString();
+                        LoadReport(CurrentReportName);
+                    })">
+            @foreach (var Report in ReportList)
+            {
+                <option value="@Report"
+                selected="@(Report == CurrentReportName ? "selected" : null)">
+                    @Report
+                </option>
+            }
+        </select>
+    }
+</div>
+<br />
+<!-- TOOLBAR -->
+<div>
+    <div>
+        <div class="rz-p-sm-1" style="background-color:whitesmoke; border-block:thin; border-block-color:lightgray; text-align:left">
+
+            <button @onclick="OpenWizard" title="Report Wizard" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">flash_on</i>
+            </button>
+
+            @if (ReportList.Count > 0)
+            {
+                <button @onclick="async () => await ExecuteReportAsync()" title="Execute" style="background:none;border:none;">
+                    <i class="material-icons" style="color:black;">play_arrow</i>
+                </button>
+
+                @if (CanUndo)
+                {
+                    <button @onclick="() => Undo()" title="Undo" style="background:none;border:none;">
+                        <i class="material-icons" style="color:black;">undo</i>
+                    </button>
+                }
+
+                @if (CanRedo)
+                {
+                    <button @onclick="() => Redo()" title="Redo" style="background:none;border:none;">
+                        <i class="material-icons" style="color:black;">redo</i>
+                    </button>
+                }
+
+                <button @onclick="DeleteConfirmation" title="Delete" style="background:none;border:none;">
+                    <i class="material-icons" style="color:black;">delete</i>
+                </button>
+
+                <button @onclick='() => ExportReport("rdl")' title="Export" style="background:none;border:none;">
+                    <i class="material-icons" style="color:black;">file_download</i>
+                </button>
+
+                @if (ContentChanged)
+                {
+                    <span style="color:red">&nbsp;&nbsp;<b>Editing...</b></span>
+                }
+            }
+
+            <button @onclick='() => ImportReport()' title="Import Report" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">file_upload</i>
+            </button>
+        </div>
+    </div>
+
+    <br />
+    <br />
+</div>
+<br />
+<!-- POPUPS -->
+@if (IsNewOutputPopupVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog" style="max-width: 60%; margin-top: 5%;">
+            <div class="modal-content">
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">View Report</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseOutputReportPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+                        <div role="progressbar" class="marquee" style="width: 100%; display: @(IsLoading ? "block" : "none");"></div>
+
+                        <div style="display: @(IsLoading ? "none" : "block");">
+                            Page: <span>@CurrentPage</span> / <span id="page_count">0</span> &nbsp;&nbsp;
+                            <div style="background-color:whitesmoke; padding:8px; border:1px solid lightgray; text-align:left;">
+                                <button @onclick="PreviousPage" title="Previous" style="background:none; border:none;">
+                                    <i class="material-icons" style="color:black;">arrow_back</i>
+                                </button>
+                                <button @onclick="NextPage" title="Next" style="background:none; border:none;">
+                                    <i class="material-icons" style="color:black;">arrow_forward</i>
+                                </button>
+                                <button @onclick="ZoomIn" title="Zoom In" style="background:none; border:none;">
+                                    <i class="material-icons" style="color:black;">zoom_in</i>
+                                </button>
+                                <button @onclick="ZoomOut" title="Zoom Out" style="background:none; border:none;">
+                                    <i class="material-icons" style="color:black;">zoom_out</i>
+                                </button>
+                                <button @onclick="OpenAIPopup" title="AI" style="background:none;border:none;">
+                                    <i class="material-icons" style="color:black;">psychology</i>
+                                </button>
+                                <button @onclick="PrintPdf" title="Print" style="background:none; border:none;">
+                                    <i class="material-icons" style="color:black;">print</i>
+                                </button>
+                            </div>
+                            <div @ref="pdfContainer" id="pdf-container"
+                            style="border: 0px solid #ccc; width: 100%; height: 800px;"></div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@if (IsWizardVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Report Wizard</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseReportWizardPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <label>Select Table/View: </label>
+                        <select @onchange="@(async (args) =>
+                            {
+                                CurrentSelectedTableWizard = args.Value?.ToString();
+                            })">
+                            @foreach (var table in TableList)
+                            {
+                                <option value="@table" selected="@(table == CurrentSelectedTableWizard ? "selected" : null)">
+                                    @table
+                                </option>
+                            }
+                        </select>
+                        &nbsp;&nbsp;
+                        <button @onclick="onReportWizard">Select</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@if (ShowDeleteConfirmation)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Confirm Delete</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseDeleteConfirmationPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="DeleteAsync">Yes</button>
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="CloseDeleteConfirmationPopup">No</button>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@if (IsSaveReportPopupVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">New Report</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseNewReportPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <form @onsubmit="SaveReport">
+                            <div>
+                                <label><b>Current Database:</b> @CurrentDatabaseName</label>
+                            </div>
+                            <br />
+                            <div>
+                                <label for="ReportName">Report Name:</label>
+                                <input type="text" id="ReportName" maxlength="50" style="width: 150px;" @bind="CurrentReportNameWithoutDatabase" />
+                                &nbsp;&nbsp;
+                                <button type="submit">Submit</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@if (IsImportReportPopupVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Import Report</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseImportReportPopup"></button>
+                        </div>
+                    </div>
+
+                    <div class="window-body has-space">
+                        <form @onsubmit="ImportReportAsync">
+                            <div>
+                                <label for="reportName">Report Name:</label>
+                                <input type="text" id="reportName" maxlength="50" style="width: 300px;" @bind="CurrentImportReportName" />
+                                <br /><br />
+                                <button type="submit">Submit</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@if (ShowAI)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">AI Prompt</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseAIPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+                        @if (IsAILoading)
+                        {
+                            <div role="progressbar" class="marquee" style="width: 100%"></div>
+                            <br />
+                            <h5>@AIStatusMessage</h5>
+                            <br />
+                        }
+                        else
+                        {
+                            <div class="has-scrollbar" style="width: 100%; height: 110px; overflow: auto">
+                                <textarea @bind="AIMessage" maxlength="1000"
+                                style="width: 100%; height: 100px; overflow: auto; resize: vertical;">
+                                </textarea>
+                            </div>
+                            <select @bind="AutoFixOption">
+                                <option value="true" selected="@(AutoFixOption == "true" ? "selected" : null)">Auto-Fix any errors</option>
+                                <option value="false" selected="@(AutoFixOption == "false" ? "selected" : null)">Do not Auto-Fix</option>
+                            </select>
+                            <br />
+                            <br />
+                            <button @onclick="AIbtn">Submit</button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@if (ReportErrorMessage != "")
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Report Error</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseReportErrorMessagePopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+
+                        <div class="has-scrollbar" style="width: 100%; height: 100%; overflow: auto">
+                            @ReportErrorMessage
+                        </div>
+                        <br /><br />
+                        <div style="text-align: center;">
+                            <span>&nbsp; &nbsp;</span>
+                            @if (BackupReportPath != "")
+                            {
+                                <button @onclick="RevertToPreviousVersionAsync">Revert to previous report version</button>
+                                <span>&nbsp; &nbsp;</span>
+                            }
+                            <button @onclick="async () => await FixReportAsync()">Call AI to fix report</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@if (Message != "")
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Alert!</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseMessagePopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <div class="has-scrollbar" style="width: 100%; height: 100px; overflow: auto">
+                            @Message
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@code {
+    private ElementReference pdfContainer;
+
+    private bool ContentChanged { get; set; }
+
+    private List<string> TableList = new List<string>();
+    private string CurrentSelectedTableWizard = "";
+
+    private bool IsLoading { get; set; } = false;
+    private string TempPdfPath = "";
+    private List<string> ReportList = new List<string>();
+    private DataTable CurrentReportData { get; set; }
+    private byte[] CurrentReportPdfBytes = new byte[] { };
+    private string CurrentReportName = "";
+    private string BackupReportPath = "";
+    private string AutoFixOption { get; set; } = "true";
+    private string CurrentImportReportName = "";
+    private byte[] CurrentImportReportContents = new byte[] { };
+    private bool IsImportReportPopupVisible { get; set; } = false;
+
+    List<string> colAllDatabases = new List<string>();
+    string CurrentDatabaseName = "Default";
+    string CurrentReportNameWithoutDatabase = string.Empty;
+    bool ShowDeleteConfirmation = false;
+
+    private bool IsWizardVisible { get; set; } = false;
+    private bool IsSaveReportPopupVisible { get; set; } = false;
+    private bool IsNewOutputPopupVisible { get; set; } = false;
+
+    private Stack<string> undoStack = new();
+    private Stack<string> redoStack = new();
+    private bool CanUndo => undoStack.Count > 0;
+    private bool CanRedo => redoStack.Count > 0;
+
+    private bool IsAILoading { get; set; } = false;
+    private bool ShowAI { get; set; } = false;
+    private string AIStatusMessage = "";
+    private string CurrentScript = "";
+    private string AIMessage = "";
+    private string ReportErrorMessage = "";
+
+    private bool IsExportVisible { get; set; } = false;
+
+    private int CurrentPage = 1;
+
+    string Message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReportsListDropdownSelectDefaultReportAsync();
+        colAllDatabases = await databaseService.GetAllDatabasesAsync();
+        await LoadTableAndViewListDropdownAsync();
+    }
+
+    // Tables and Views Dropdown
+
+    private async Task LoadTableAndViewListDropdownAsync()
+    {
+        TableList = new List<string>();
+
+        var colTables = await databaseService.GetAllTablesAsync();
+
+        if (colTables.Count > 0)
+        {
+            // Add each table to the list prepended with "Table: "
+            foreach (var table in colTables)
+            {
+                TableList.Add($"Table: {table}");
+            }
+        }
+
+        // Get all Views
+        var colViews = await databaseService.GetAllViewsAsync();
+
+        if (colViews.Count > 0)
+        {
+            // Add each view to the list prepended with "View: "
+            foreach (var view in colViews)
+            {
+                TableList.Add($"View: {view}");
+            }
+        }
+
+        // Sort the list
+        TableList.Sort();
+
+        // sort so that entries that begin with "default/" are listed first
+        TableList.Sort(
+            (x, y) => x.StartsWith("Default/") == y.StartsWith("Default/")
+            ? 0
+            : x.StartsWith("Default/") ? -1 : 1);
+
+        // Add: * Select DataSource* at the end of the list
+        TableList.Add("*Select DataSource*");
+
+        CurrentSelectedTableWizard = TableList.Last();
+    }
+
+    // Report Dropdown
+
+    private async Task LoadReportListDropdownAsync()
+    {
+        ReportList = new List<string>();
+        ReportList = await databaseService.GetAllReportsAsync();
+    }
+
+    // Reports Dropdown
+
+    private async Task LoadReportsListDropdownSelectDefaultReportAsync()
+    {
+        await LoadReportListDropdownAsync();
+
+        if (ReportList.Count > 0)
+        {
+            CurrentReportName = ReportList.First();
+        }
+    }
+
+    private void LoadReport(string paramReport)
+    {
+        // Separate the report name from the database
+        var (Database, ReportName) = DataService.ExtractDatabaseAndTable(paramReport);
+
+        // Load the DataReport
+        String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports";
+        var fileName = Path.Combine(ReportsFolder, $"{ReportName}.rdlc");
+
+        if (System.IO.File.Exists(fileName))
+        {
+            // Update the Undo/Redo stacks
+            undoStack.Clear();
+            redoStack.Clear();
+
+            // Set CurrentReportName
+            CurrentReportName = paramReport;
+
+            // Log the report loaded
+            _LogService.WriteToLog($"Report loaded ({CurrentReportName})");
+        }
+        else
+        {
+            Message = "Report not found.";
+            _LogService.WriteToLog($"Report not found ({fileName})");
+        }
+    }
+
+    // Delete
+
+    private void onDeleteConfirmation()
+    {
+        if (CurrentReportName.Trim().Length == 0)
+        {
+            Message = "Must save Report first.";
+        }
+        else
+        {
+            ShowDeleteConfirmation = true;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        ShowDeleteConfirmation = false;
+
+        // Separate the report name from the database
+        var (Database, ReportName) = DataService.ExtractDatabaseAndTable(CurrentReportName);
+
+        // Delete the file
+        String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports";
+        var fileName = Path.Combine(ReportsFolder, $"{ReportName}.rdlc");
+
+        if (System.IO.File.Exists(fileName))
+        {
+            System.IO.File.Delete(fileName);
+        }
+
+        CurrentReportName = string.Empty;
+
+        Message = $"{ReportName} deleted!";
+        _LogService.WriteToLog(Message);
+
+        await LoadReportsListDropdownSelectDefaultReportAsync();
+    }
+
+    private void DeleteConfirmation()
+    {
+        ShowDeleteConfirmation = true;
+    }
+
+    private void CloseDeleteConfirmationPopup()
+    {
+        ShowDeleteConfirmation = false;
+    }
+
+    // Report Wizard
+
+    private void onReportWizard()
+    {
+        if (string.IsNullOrEmpty(CurrentSelectedTableWizard) || (CurrentSelectedTableWizard == "*Select DataSource*"))
+        {
+            Message = "Please select a table or a view.";
+            return;
+        }
+
+        if (CurrentSelectedTableWizard.StartsWith("Table:"))
+        {
+            string TableWizardName = CurrentSelectedTableWizard.Substring(7);
+
+            // Separate the table name from the database
+            var (Database, TableName) = DataService.ExtractDatabaseAndTable(TableWizardName);
+
+            CurrentDatabaseName = Database;
+            CurrentReportNameWithoutDatabase = $"Report{TableName}";
+        }
+        else if (CurrentSelectedTableWizard.StartsWith("View:"))
+        {
+            string TableWizardName = CurrentSelectedTableWizard.Substring(6);
+
+            // Separate the view name from the database
+            var (Database, ViewName) = DataService.ExtractDatabaseAndTable(TableWizardName);
+
+            CurrentDatabaseName = Database;
+            CurrentReportNameWithoutDatabase = $"Report{ViewName}";
+        }
+
+        _LogService.WriteToLog($"Open the New Table popup ({CurrentReportNameWithoutDatabase})");
+
+        // Open the New Table popup
+        IsWizardVisible = false;
+        IsSaveReportPopupVisible = true;
+    }
+
+    // Popups
+
+    private void OpenWizard()
+    {
+        IsWizardVisible = true;
+    }
+
+    private void CloseNewReportPopup()
+    {
+        IsSaveReportPopupVisible = false;
+    }
+
+    private void CloseOutputReportPopup()
+    {
+        IsNewOutputPopupVisible = false;
+    }
+
+    private void CloseReportWizardPopup()
+    {
+        IsWizardVisible = false;
+    }
+
+    private void CloseMessagePopup()
+    {
+        Message = "";
+    }
+
+    // Save
+
+    private async Task SaveReport()
+    {
+        if (string.IsNullOrEmpty(CurrentReportNameWithoutDatabase))
+        {
+            Message = "Please enter a Report name.";
+            return;
+        }
+
+        // Remove spaces and special characters
+        string CleanedName = databaseService.RemoveSpacesSpecialCharacters(CurrentReportNameWithoutDatabase);
+
+        if (CleanedName != CurrentReportNameWithoutDatabase)
+        {
+            CurrentReportNameWithoutDatabase = CleanedName;
+            Message = $"Report Name will be {CurrentReportNameWithoutDatabase}";
+            return;
+        }
+
+        // Check for duplicates
+        if (DetectDuplicates(CurrentDatabaseName, CurrentReportNameWithoutDatabase))
+        {
+            Message = "A Table or View with this name already exists.";
+            return;
+        }
+
+        // CurrentObjectName is everything after the "/" in CurrentSelectedTableWizard
+        string CurrentObjectDataName = CurrentSelectedTableWizard.Substring(CurrentSelectedTableWizard.IndexOf("/") + 1);
+
+        String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{CurrentDatabaseName}/Reports";
+        var fileName = Path.Combine(ReportsFolder, $"{CurrentReportNameWithoutDatabase}.rdlc");
+
+        // Load the code for the class we want to generate the RDL for
+        String ClassesFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{CurrentDatabaseName}/Classes";
+        var codeFile = Path.Combine(ClassesFolder, $"{CurrentObjectDataName}.cs");
+
+        if (!System.IO.File.Exists(codeFile))
+        {
+            Message = $"{codeFile} Code file not found.";
+            _LogService.WriteToLog(Message);
+            return;
+        }
+
+        // Load the code from the file
+        var code = System.IO.File.ReadAllText(codeFile);
+
+        // Get the Type for the class we want to generate the RDL for
+        var ClassType = XsdGenerator.GetTypeFromCode(code, DataService.FirstCharToUpper(CurrentObjectDataName));
+
+        // Generate an RDL string dynamically:
+        string rdlXml = DynamicRdlBuilder.GenerateDynamicRdl(
+            ClassType,
+            reportTitle: $"{CurrentReportNameWithoutDatabase} Report",
+            schemaPath: @$"{ReportsFolder}\Data\{CurrentObjectDataName}.xsd"
+        );
+
+        // You can then save the string to a .rdl file:
+        System.IO.File.WriteAllText(fileName, rdlXml);
+
+        Message = $"{CurrentReportNameWithoutDatabase} saved!";
+        _LogService.WriteToLog(Message);
+
+        // Add the database name to the CurrentReportName
+        CurrentReportName = $"{CurrentDatabaseName}/{CurrentReportNameWithoutDatabase}";
+
+        // ** Close the popup if visible
+        IsSaveReportPopupVisible = false;
+
+        // Reload the dropdown
+        await LoadReportListDropdownAsync();
+
+        // Load the Report
+        LoadReport(CurrentReportName);
+    }
+
+    // *****************************************************************************************
+    // Report
+    // *****************************************************************************************
+
+    private async Task ExecuteReportAsync()
+    {
+        try
+        {
+            IsNewOutputPopupVisible = true;
+
+            IsLoading = true;
+
+            // *****************************************************************************************
+            // GET Report Data
+            // *****************************************************************************************
+
+            try
+            {
+                await GetReportData();
+            }
+            catch (Exception ex)
+            {
+                ReportErrorMessage = ex.GetBaseException().Message;
+                _LogService.WriteToLog($"Report Execute() - GetReportData() - Error: {Message} - {ex.StackTrace.ToString()}");
+
+                try
+                {
+                    // Determine if there is a backup of the report
+                    // If there is set BackupReportPath so the restore backup buton shows
+
+                    // Separate the report name from the database
+                    var (Database, ReportName) = DataService.ExtractDatabaseAndTable(CurrentReportName);
+
+                    var ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports";
+
+                    // Backup the report
+                    BackupReportPath = Path.Combine(ReportsFolder, "Backup", $"{ReportName}.rdlc");
+
+                    // See if the file exists
+                    if (!System.IO.File.Exists(BackupReportPath))
+                    {
+                        // Set this to empty so the button does not show
+                        BackupReportPath = "";
+                    }
+                    return;
+                }
+                catch (Exception ex2)
+                {
+                    _LogService.WriteToLog($"GetReportData() - Determine backup restore button Error: {ex2.Message} - {ex2.StackTrace.ToString()}");
+                    return;
+                }
+            }
+
+            // *****************************************************************************************
+            // Run Report
+            // *****************************************************************************************
+
+            try
+            {
+                await PrepareReportAsync();
+            }
+            catch (Exception ex)
+            {
+                ReportErrorMessage = ex.GetBaseException().Message;
+                _LogService.WriteToLog($"Report Execute() - PrepareReportAsync() - Error: {Message} - {ex.StackTrace.ToString()}");
+
+                try
+                {
+                    // Determine if there is a backup of the report
+                    // If there is set BackupReportPath so the restore backup buton shows
+
+                    // Separate the report name from the database
+                    var (Database, ReportName) = DataService.ExtractDatabaseAndTable(CurrentReportName);
+
+                    var ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports";
+
+                    // Backup the report
+                    BackupReportPath = Path.Combine(ReportsFolder, "Backup", $"{ReportName}.rdlc");
+
+                    // See if the file exists
+                    if (!System.IO.File.Exists(BackupReportPath))
+                    {
+                        // Set this to empty so the button does not show
+                        BackupReportPath = "";
+                    }
+
+                    return;
+                }
+                catch (Exception ex2)
+                {
+                    _LogService.WriteToLog($"PrepareReportAsync() - Determine backup restore button Error: {ex2.Message} - {ex2.StackTrace.ToString()}");
+                    return;
+                }
+            }
+
+            // *****************************************************************************************
+            // Render Report
+            // *****************************************************************************************
+
+            try
+            {
+                await RenderReport();
+
+                // Delete the temp pdf file
+                System.IO.File.Delete(TempPdfPath);
+            }
+            catch (Exception ex)
+            {
+                Message = ex.GetBaseException().Message;
+                _LogService.WriteToLog($"Report Execute() Error: {Message} - {ex.StackTrace.ToString()}");
+            }
+
+            IsLoading = false;
+
+            CurrentPage = 1;
+        }
+        catch (Exception ex)
+        {
+            Message = ex.GetBaseException().Message;
+            _LogService.WriteToLog($"Report Execute() Error: {Message} - {ex.StackTrace.ToString()}");
+        }
+    }
+
+    private async Task GetReportData()
+    {
+        // Separate the report name from the database
+        var (Database, ReportName) = DataService.ExtractDatabaseAndTable(CurrentReportName);
+
+        String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports";
+        var reportPath = Path.Combine(ReportsFolder, $"{ReportName}.rdlc");
+
+        // Determine if it is a Table or a View
+        // If the file is in the Parquet folder, it is a Table
+        // If the file is in the Views folder, it is a View
+        // Open the .rdlc file and get the SchemaPath to get the ClassName
+        String ClassType = "Table";
+        var ClassName = XsdGenerator.GetTableName(reportPath);
+        String viewsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Views";
+        var fileName = Path.Combine(viewsFolder, $"{ClassName}.view");
+
+        if (System.IO.File.Exists(fileName))
+        {
+            ClassType = "View";
+        }
+
+        IEnumerable<IDictionary<string, object>> result = new List<IDictionary<string, object>>();
+
+        Dataloader dataloader = new Dataloader();
+
+        // Get the data based on the ClassType
+        if (ClassType == "Table")
+        {
+            // Get the data from the Parquet file
+            result = await dataloader.LoadParquet(Database, ClassName);
+        }
+        else // View
+        {
+            // Get the data from the View file
+            result = await dataloader.LoadView(Database, ClassName);
+        }
+
+        // Get the fields from the first record (ensure result is not empty)
+        var fields = result.Any()
+            ? result.First().Keys.ToList()
+            : new List<string>();
+
+        // Create a DataTable
+        DataTable dt = new DataTable("MyDataTable");
+
+        // Add an Id column
+        dt.Columns.Add("Id", typeof(int));
+
+        // Add columns for all fields (replace spaces with underscores)
+        foreach (var field in fields)
+        {
+            string columnName = field.Replace(" ", "_");
+            dt.Columns.Add(columnName, typeof(object));
+        }
+
+        // Fill the DataTable rows
+        int i = 0;
+        foreach (var item in result)
+        {
+            DataRow newRow = dt.NewRow();
+            newRow["Id"] = i++;
+
+            foreach (var field in fields)
+            {
+                string columnName = field.Replace(" ", "_");
+                newRow[columnName] = item.ContainsKey(field) ? item[field] : null;
+            }
+
+            dt.Rows.Add(newRow);
+        }
+
+        CurrentReportData = dt;
+    }
+
+    private async Task PrepareReportAsync()
+    {
+        // Separate the report name from the database
+        var (Database, ReportName) = DataService.ExtractDatabaseAndTable(CurrentReportName);
+
+        // Load the report definition
+        String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports";
+        var reportPath = Path.Combine(ReportsFolder, $"{ReportName}.rdlc");
+
+        if (!System.IO.File.Exists(reportPath))
+        {
+            Message = "Report file not found.";
+            await _LogService.WriteToLogAsync(Message);
+            return;
+        }
+
+        // Load the report definition (the RDLC file)
+        await using var reportStream = System.IO.File.OpenRead(reportPath);
+
+        await RunReport(ReportName, reportStream);
+    }
+
+    private async Task RunReport(string ReportName, FileStream reportStream)
+    {
+        // Create the report
+        using var report = new LocalReport();
+
+        // Define the report parameters
+        var parameters = new[] { new ReportParameter("Title", ReportName) };
+
+        using var reportReader = new System.IO.StreamReader(reportStream);
+        report.LoadReportDefinition(reportReader);
+
+        // Add the data source to the report
+        report.DataSources.Add(new ReportDataSource("DataSet1", CurrentReportData));
+
+        // Set any report parameters (if needed)
+        report.SetParameters(parameters);
+
+        // Render the report to a PDF byte array
+        CurrentReportPdfBytes = report.Render("PDF");
+
+        await _LogService.WriteToLogAsync($"RunReport {ReportName}");
+    }
+
+    private async Task RenderReport()
+    {
+        // Separate the report name from the database
+        var (Database, ReportName) = DataService.ExtractDatabaseAndTable(CurrentReportName);
+
+        // To display properly we need to save the PDF as a file and re-load it
+        string ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports";
+        var reportPath = Path.Combine(ReportsFolder, $"{ReportName}.rdlc");
+        TempPdfPath = System.IO.Path.Combine(ReportsFolder, $"{DateTime.Now.Ticks.ToString()}-TempReport.pdf");
+
+        // Save the pdf to the temp file
+        System.IO.File.WriteAllBytes(TempPdfPath, CurrentReportPdfBytes);
+
+        // Open the temp PDF file and read the bytes
+        await using (var pdfStream = System.IO.File.OpenRead(TempPdfPath))
+        {
+            using (var memoryStream = new System.IO.MemoryStream())
+            {
+                await pdfStream.CopyToAsync(memoryStream);
+                CurrentReportPdfBytes = memoryStream.ToArray();
+            }
+        }
+
+        // Convert the PDF bytes to a base64 string
+        var pdfBase64 = Convert.ToBase64String(CurrentReportPdfBytes);
+
+        // Call the JavaScript function with the element reference and the PDF data
+        await jsRuntime.InvokeVoidAsync("blazorPdfViewer.renderPdf", pdfContainer, pdfBase64);
+
+        // Backup the report
+        BackupReportPath = Path.Combine(ReportsFolder, "Backup", $"{ReportName}.rdlc");
+
+        // Create Backup folder if it does not exist
+        if (!System.IO.Directory.Exists(Path.Combine(ReportsFolder, "Backup")))
+        {
+            System.IO.Directory.CreateDirectory(Path.Combine(ReportsFolder, "Backup"));
+        }
+
+        System.IO.File.Copy(reportPath, BackupReportPath, true);
+
+        _LogService.WriteToLog($"Render Report ({CurrentReportName})");
+    }
+
+    private async Task RevertToPreviousVersionAsync()
+    {
+        // Separate the report name from the database
+        var (Database, ReportName) = DataService.ExtractDatabaseAndTable(CurrentReportName);
+        // Delete the file
+
+        String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports";
+
+        var fileName = Path.Combine(ReportsFolder, $"{ReportName}.rdlc");
+
+        if (System.IO.File.Exists(fileName))
+        {
+            System.IO.File.Delete(fileName);
+        }
+
+        // Copy the backup file to the original file
+        System.IO.File.Copy(BackupReportPath, fileName, true);
+
+        _LogService.WriteToLog($"Revert report to previous version ({CurrentReportName})");
+
+        // Close the popup
+        ReportErrorMessage = "";
+
+        IsAILoading = false;
+        ShowAI = false;
+
+        // Load the Report
+        await ExecuteReportAsync();
+    }
+
+    private async Task FixReportAsync()
+    {
+        try
+        {
+            // Get APIKey from secure settings
+            string ApiKey = await SecureStorage.Default.GetAsync("AIApiKey") ?? "";
+
+            if (string.IsNullOrEmpty(ApiKey))
+            {
+                if ((SettingsService.Settings.ApplicationSettings.AIType == "OpenAI") || (SettingsService.Settings.ApplicationSettings.AIType == "Azure OpenAI"))
+                {
+                    Message = "Please set up AI in Setings";
+                    IsAILoading = false;
+                    ShowAI = false;
+                    return;
+                }
+            }
+
+            if ((SettingsService.Settings.ApplicationSettings.AIType == "LM Studio") || (SettingsService.Settings.ApplicationSettings.AIType == "Ollma"))
+            {
+                if ((SettingsService.Settings.ApplicationSettings.Endpoint.Trim() == ""))
+                {
+                    Message = "Please set up AI in Setings";
+                    IsAILoading = false;
+                    ShowAI = false;
+                    return;
+                }
+            }
+
+            // Save error message in CurrentReportError
+            string CurrentReportError = ReportErrorMessage;
+
+            // Close the popup
+            ReportErrorMessage = "";
+
+            // Open the AI popup
+            IsAILoading = true;
+            ShowAI = true;
+
+            AIStatusMessage = "Calling AI to fix report...";
+            StateHasChanged();
+
+            // *** Get the Report
+
+            // Separate the report name from the database
+            var (Database, ReportName) = DataService.ExtractDatabaseAndTable(CurrentReportName);
+
+            String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports";
+
+            var fileName = Path.Combine(ReportsFolder, $"{ReportName}.rdlc");
+
+            if (!System.IO.File.Exists(fileName))
+            {
+                Message = $"Report file '{fileName}' not found.";
+                return;
+            }
+
+            // Open fileName and get the content into CurrentScript
+            CurrentScript = System.IO.File.ReadAllText(fileName);
+
+            // CallFixReportAsync
+            var objAIResponse = await CallFixReportAsync(CurrentScript, CurrentReportError);
+
+            IsAILoading = false;
+            ShowAI = false;
+
+            if (objAIResponse.Error != "")
+            {
+                Message = objAIResponse.Error;
+                return;
+            }
+            else
+            {
+                // Save AIResponse.Response to the filename
+                System.IO.File.WriteAllText(fileName, objAIResponse.Response);
+
+                // Load the Report
+                await ExecuteReportAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Message = ex.GetBaseException().Message;
+            _LogService.WriteToLog($"Report FixReportAsync Error: {Message} - {ex.StackTrace.ToString()}");
+
+            IsAILoading = false;
+            ShowAI = false;
+
+            // Rethrow the exception
+            throw;
+        }
+    }
+
+    private async Task<AIResponse> CallFixReportAsync(string paramCurrentScript, string paramCurrentReportError)
+    {
+        // ** Open the template
+        string templatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Templates", "AITemplateReportPageFixCode.txt");
+
+        // Read the content of the template file
+        string templateContent = File.ReadAllText(templatePath);
+
+        // Replace the placeholders
+        string AIRequest = "";
+
+        AIRequest = templateContent.Replace("## CURRENT CODE ##", paramCurrentScript);
+        AIRequest = AIRequest.Replace("## CURRENT ERROR ##", paramCurrentReportError);
+
+        await _LogService.WriteToLogAsync($"Report FixReportAsync ({AIRequest})");
+
+        // Get APIKey from secure settings
+        string ApiKey = await SecureStorage.Default.GetAsync("AIApiKey") ?? "";
+
+        var objAIResponse = await OrchestratorMethods.CallOpenAIAsync(SettingsService, ApiKey, AIRequest);
+
+        if (objAIResponse.Error != "")
+        {
+            await _LogService.WriteToLogAsync($"Report FixReportAsync Response Error ({objAIResponse.Error})");
+        }
+        else
+        {
+            await _LogService.WriteToLogAsync($"Report FixReportAsync Response ({objAIResponse.Response})");
+        }
+
+        return objAIResponse;
+    }
+
+    private async Task PreviousPage()
+    {
+        if (CurrentPage > 1)
+        {
+            CurrentPage--;
+            await jsRuntime.InvokeVoidAsync("blazorPdfViewer.previousPage", pdfContainer);
+        }
+    }
+
+    private async Task NextPage()
+    {
+        // get the number of pages
+        var pageCount = await jsRuntime.InvokeAsync<int>("blazorPdfViewer.getPageCount", pdfContainer);
+
+        if (CurrentPage < pageCount)
+        {
+            CurrentPage++;
+            await jsRuntime.InvokeVoidAsync("blazorPdfViewer.nextPage", pdfContainer);
+        }
+    }
+
+    private async Task ZoomIn()
+    {
+        await jsRuntime.InvokeVoidAsync("blazorPdfViewer.zoomIn", pdfContainer);
+    }
+
+    private async Task ZoomOut()
+    {
+        await jsRuntime.InvokeVoidAsync("blazorPdfViewer.zoomOut", pdfContainer);
+    }
+
+    private async Task PrintPdf()
+    {
+        await jsRuntime.InvokeVoidAsync("blazorPdfViewer.printPdf", pdfContainer);
+    }
+
+    #region public async Task<IEnumerable<IDictionary<string, object>>> RunDynamicCode(string paramCode)
+    public async Task<IEnumerable<IDictionary<string, object>>> RunDynamicCode(string paramCode)
+    {
+        try
+        {
+            dynamic script = CSScript.Evaluator.LoadMethod(paramCode);
+
+            _LogService.WriteToLog($"RunDynamicCode ({paramCode})");
+
+            var result = await script.ReturnResult();
+
+            return result as IEnumerable<IDictionary<string, object>>;
+        }
+        catch (Exception ex)
+        {
+            Message = ex.GetBaseException().Message;
+            _LogService.WriteToLog(ex.Message);
+            return null;
+        }
+    }
+    #endregion
+
+    // Duplicates
+
+    #region public static bool DetectDuplicates(string paramDatabaseName, string paramParquetName)
+    public static bool DetectDuplicates(string paramDatabaseName, string paramParquetName)
+    {
+        bool result = false;
+
+        // Check if the table name already exists
+        String folderPath = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{paramDatabaseName}/Views";
+
+        string fileName = $"{folderPath}/{paramParquetName}.view";
+        var ParquetExists = System.IO.File.Exists(fileName);
+
+        String ReportsFolderPath = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/{paramDatabaseName}/Reports";
+
+        fileName = $"{ReportsFolderPath}/{paramParquetName}.rdlc";
+        var ViewExists = System.IO.File.Exists(fileName);
+
+        if (ParquetExists || ViewExists)
+        {
+            result = true;
+        }
+
+        return result;
+    }
+    #endregion
+
+    // *****************************************************************************************
+    // AI
+    // *****************************************************************************************
+
+    #region AI
+    private async Task AIbtn()
+    {
+        try
+        {
+            String CurrentReportError = "";
+            ReportErrorMessage = "";
+            AIStatusMessage = "Loading...";
+
+            // Get APIKey from secure settings
+            string ApiKey = await SecureStorage.Default.GetAsync("AIApiKey") ?? "";
+
+            if (string.IsNullOrEmpty(ApiKey))
+            {
+                if ((SettingsService.Settings.ApplicationSettings.AIType == "OpenAI") || (SettingsService.Settings.ApplicationSettings.AIType == "Azure OpenAI"))
+                {
+                    Message = "Please set up AI in Setings";
+                    return;
+                }
+            }
+
+            if ((SettingsService.Settings.ApplicationSettings.AIType == "LM Studio") || (SettingsService.Settings.ApplicationSettings.AIType == "Ollma"))
+            {
+                if ((SettingsService.Settings.ApplicationSettings.Endpoint.Trim() == ""))
+                {
+                    Message = "Please set up AI in Setings";
+                    return;
+                }
+            }
+
+            // Get the current script
+
+            // Separate the report name from the database
+            var (Database, ReportName) = DataService.ExtractDatabaseAndTable(CurrentReportName);
+
+            // Get the file
+            String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports";
+            var fileName = Path.Combine(ReportsFolder, $"{ReportName}.rdlc");
+
+            if (!System.IO.File.Exists(fileName))
+            {
+                Message = $"Report file '{fileName}' not found.";
+                return;
+            }
+
+            await _LogService.WriteToLogAsync($"Report CallOpenAIAsync fileName ({fileName})");
+
+            // Open fileName and get the content into CurrentScript
+            CurrentScript = System.IO.File.ReadAllText(fileName);
+
+            if (CurrentScript != "")
+            {
+                // Update the Undo/Redo stacks
+                undoStack.Push(CurrentScript);
+            }
+            else
+            {
+                Message = $"Report file '{fileName}' is  empty.";
+                return;
+            }
+
+            await _LogService.WriteToLogAsync($"Report CallOpenAIAsync CurrentScript ({CurrentScript})");
+
+            IsAILoading = true;
+            StateHasChanged();
+
+            // *****************************************************************************************
+            // GET Report Data
+            // *****************************************************************************************
+
+            try
+            {
+                await GetReportData();
+            }
+            catch (Exception ex)
+            {
+                Message = ex.GetBaseException().Message;
+                _LogService.WriteToLog($"AIbtn - GetReportData() - Error: {Message} - {ex.StackTrace.ToString()}");
+                IsAILoading = false;
+                ShowAI = false;
+                AIStatusMessage = "";
+                return;
+            }
+
+            // *****************************************************************************************
+            // CALL AI to Update Report
+            // *****************************************************************************************
+
+            // ** Open the template
+            string templatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Templates", "AITemplateReportPage.txt");
+
+            // Read the content of the template file
+            string templateContent = File.ReadAllText(templatePath);
+
+            // Replace the placeholders
+            string AIRequest = "";
+
+            // FIRST PASS
+
+            AIRequest = templateContent.Replace("## CURRENT CODE ##", CurrentScript);
+            AIRequest = AIRequest.Replace("## CURRENT REQUEST ##", AIMessage);
+
+            AIStatusMessage = "(first pass) Calling AI...";
+            StateHasChanged();
+
+            await _LogService.WriteToLogAsync($"Report CallOpenAIAsync (first pass) ({AIRequest})");
+
+            var objAIResponse = await OrchestratorMethods.CallOpenAIAsync(SettingsService, ApiKey, AIRequest);
+
+            if (objAIResponse.Error != "")
+            {
+                Message = objAIResponse.Error;
+                await _LogService.WriteToLogAsync($"Report CallOpenAIAsync Response Error (first pass) ({objAIResponse.Error})");
+                IsAILoading = false;
+                ShowAI = false;
+                AIStatusMessage = "";
+                return;
+            }
+
+            await _LogService.WriteToLogAsync($"Report CallOpenAIAsync Response (first pass) ({objAIResponse.Response})");
+
+            // SECOND PASS
+
+            // ** Open the template
+            templatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Templates", "AITemplateReportPageSecondPass.txt");
+
+            // Read the content of the template file
+            templateContent = File.ReadAllText(templatePath);
+
+            // Replace the placeholders
+            AIRequest = "";
+
+            AIRequest = templateContent.Replace("## CURRENT CODE ##", objAIResponse.Response);
+
+            AIStatusMessage = "(second pass) Calling AI to validate markup...";
+            StateHasChanged();
+
+            await _LogService.WriteToLogAsync($"Report CallOpenAIAsync (second pass) ({AIRequest})");
+
+            objAIResponse = await OrchestratorMethods.CallOpenAIAsync(SettingsService, ApiKey, AIRequest);
+
+            if (objAIResponse.Error != "")
+            {
+                Message = objAIResponse.Error;
+                await _LogService.WriteToLogAsync($"Report CallOpenAIAsync Response Error (second pass) ({objAIResponse.Error})");
+                IsAILoading = false;
+                ShowAI = false;
+                AIStatusMessage = "";
+                return;
+            }
+
+            await _LogService.WriteToLogAsync($"Report CallOpenAIAsync Response (second pass) ({objAIResponse.Response})");
+
+            // Save AIResponse.Response to the filename (the RDLC file)
+            System.IO.File.WriteAllText(fileName, objAIResponse.Response);
+
+            // Load the report definition (the RDLC file)
+            await using var reportStream = System.IO.File.OpenRead(fileName);
+
+            // Try to run report
+
+            try
+            {
+                await RunReport(ReportName, reportStream);
+
+                // *****************************************************************************************
+                // Render Report
+                // *****************************************************************************************
+
+                try
+                {
+                    await RenderReport();
+
+                    IsAILoading = false;
+                    ShowAI = false;
+                    AIStatusMessage = "";
+
+                    // Everything went well - return
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Message = ex.GetBaseException().Message;
+                    _LogService.WriteToLog($"AIbtn - RenderReport() - Error: {Message} - {ex.StackTrace.ToString()}");
+                    IsAILoading = false;
+                    ShowAI = false;
+                    AIStatusMessage = "";
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                CurrentReportError = ex.GetBaseException().Message;
+                // This is only hit on RunReport
+                // Do nothing - - continue to the next step
+                // to go into a loop to fix the report
+            }
+
+            // *****************************************************************************************
+            // AutoFixOption == "false"
+            // *****************************************************************************************
+            if (AutoFixOption == "false")
+            {
+                IsAILoading = false;
+                ShowAI = false;
+                AIStatusMessage = "";
+                Message = "";
+                await _LogService.WriteToLogAsync($"AIbtn - AutoFixOption == false - {CurrentReportError}");
+
+                // Backup the report
+                BackupReportPath = Path.Combine(ReportsFolder, "Backup", $"{ReportName}.rdlc");
+
+                // See if the file exists
+                if (!System.IO.File.Exists(BackupReportPath))
+                {
+                    // Set this to empty so the button does not show
+                    BackupReportPath = "";
+                }
+
+                // Display the Report Error popup
+                ReportErrorMessage = CurrentReportError;
+
+                return;
+            }
+
+            // *****************************************************************************************
+            // AutoFixOption == "true"
+            // *****************************************************************************************
+
+            bool IsSuccess = false;
+
+            // Open fileName and get the content into CurrentScript
+            CurrentScript = System.IO.File.ReadAllText(fileName);
+
+            // #############################################
+            // #############################################
+            //                  LOOP
+            // #############################################
+            // #############################################
+
+            // Set loop
+            int loop = 4;
+
+            for (int i = 1; i <= loop; i++)
+            {
+                AIStatusMessage = $"Fixing Report... (loop {i} of {loop} possible loop(s))";
+                await _LogService.WriteToLogAsync(AIStatusMessage);
+                StateHasChanged();
+
+                // CallFixReportAsync
+                objAIResponse = await CallFixReportAsync(CurrentScript, CurrentReportError);
+
+                if (objAIResponse.Error != "")
+                {
+                    CurrentReportError = objAIResponse.Error;
+                    Message = objAIResponse.Error;
+                    IsAILoading = false;
+                    ShowAI = false;
+                    AIStatusMessage = "";
+                    await _LogService.WriteToLogAsync($"AIbtn - CallFixReportAsync - Error: {objAIResponse.Error}");
+                    return;
+                }
+                else
+                {
+                    // Try to run the report
+
+                    try
+                    {
+                        // Save AIResponse.Response to the filename (the RDLC file)
+                        System.IO.File.WriteAllText(fileName, objAIResponse.Response);
+
+                        // Load the report definition (the RDLC file)
+                        await using var reportStreamLoop = System.IO.File.OpenRead(fileName);
+
+                        await RunReport(ReportName, reportStreamLoop);
+
+                        // If we get this far it worked
+                        IsSuccess = true;
+
+                        // Break out of loop
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        CurrentReportError = ex.GetBaseException().Message;
+                        _LogService.WriteToLog($"AIbtn - LOOP - RenderReport() - Error: {Message} - {ex.StackTrace.ToString()}");
+                        // We want processing to continue so it loops and tries again
+                    }
+                }
+            }
+
+            // *****************************************************************************************
+            // Render Report
+            // *****************************************************************************************
+
+            if (IsSuccess)
+            {
+                try
+                {
+                    await RenderReport();
+
+                    Message = "";
+                    IsAILoading = false;
+                    ShowAI = false;
+                    AIStatusMessage = "";
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Message = ex.GetBaseException().Message;
+                    _LogService.WriteToLog($"Report Execute() Error: {Message} - {ex.StackTrace.ToString()}");
+                    IsAILoading = false;
+                    ShowAI = false;
+                    AIStatusMessage = "";
+                    return;
+                }
+            }
+            else
+            {
+                IsAILoading = false;
+                ShowAI = false;
+                AIStatusMessage = "";
+                Message = "Could Not Process Report - Try Again";
+                await _LogService.WriteToLogAsync("AIbtn - Could Not Process Report - Try Again");
+            }
+        }
+        catch (Exception ex)
+        {
+            IsAILoading = false;
+            ShowAI = false;
+            AIStatusMessage = "";
+            Message = ex.GetBaseException().Message;
+            await _LogService.WriteToLogAsync(ex.Message);
+        }
+    }
+
+    private void OpenAIPopup()
+    {
+        AIMessage = "";
+        ShowAI = true;
+    }
+
+    private void CloseAIPopup()
+    {
+        ShowAI = false;
+        Message = "";
+    }
+
+    private void CloseReportErrorMessagePopup()
+    {
+        ReportErrorMessage = "";
+    }
+    #endregion
+
+    // Undo/Redo
+
+    // Called when the user clicks the Undo button.
+    private void Undo()
+    {
+        if (CanUndo)
+        {
+            // Separate the report name from the database
+            var (Database, ReportName) = DataService.ExtractDatabaseAndTable(CurrentReportName);
+
+            // Load the DataReport
+            String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports";
+            var fileName = Path.Combine(ReportsFolder, $"{ReportName}.rdlc");
+
+            if (System.IO.File.Exists(fileName))
+            {
+                // Load the contents of the file into TempCurrentScript
+                var TempCurrentScript = System.IO.File.ReadAllText(fileName);
+
+                // Push the current text onto the redo stack.
+                redoStack.Push(TempCurrentScript);
+
+                // Pop the last state from the undo stack and set it as the current text.
+                CurrentScript = undoStack.Pop();
+
+                // Save the current text to the file.
+                System.IO.File.WriteAllText(fileName, CurrentScript);
+            }
+        }
+    }
+
+    // Called when the user clicks the Redo button.
+    private void Redo()
+    {
+        if (CanRedo)
+        {
+            // Separate the report name from the database
+            var (Database, ReportName) = DataService.ExtractDatabaseAndTable(CurrentReportName);
+
+            // Load the DataReport
+            String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports";
+            var fileName = Path.Combine(ReportsFolder, $"{ReportName}.rdlc");
+
+            if (System.IO.File.Exists(fileName))
+            {
+                // Load the contents of the file into TempCurrentScript
+                var TempCurrentScript = System.IO.File.ReadAllText(fileName);
+
+                // Push the current state onto the undo stack.
+                undoStack.Push(TempCurrentScript);
+
+                // Pop the last undone state from the redo stack and set it as the current text.
+                CurrentScript = redoStack.Pop();
+
+                // Save the current text to the file.
+                System.IO.File.WriteAllText(fileName, CurrentScript);
+            }
+        }
+    }
+
+    // *****************************************************************************************
+    // Export
+    // *****************************************************************************************
+
+    private async Task ExportReport(string paramReportType)
+    {
+        // Separate the report name from the database
+        var (Database, ReportName) = DataService.ExtractDatabaseAndTable(CurrentReportName);
+
+        // Load the DataReport
+        String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports";
+
+        var fileName = Path.Combine(ReportsFolder, $"{ReportName}.rdlc");
+
+        if (System.IO.File.Exists(fileName))
+        {
+            // Get the file name
+            var file = $"{ReportName}.{paramReportType}";
+
+            // Get the file bytes
+            var fileBytes = System.IO.File.ReadAllBytes(fileName);
+
+            // Read DocumentContents into a MemoryStream
+            var stream = new MemoryStream(fileBytes);
+
+            var FileName = $"{ReportName}.{paramReportType}";
+
+            var picker = new Windows.Storage.Pickers.FileSavePicker
+                {
+                    SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads
+                };
+
+            picker.FileTypeChoices.Add("All Files", new List<string> { $".{paramReportType}" });
+            picker.SuggestedFileName = FileName;
+
+            var hwnd = ((MauiWinUIWindow)App.Current.Windows[0].Handler.PlatformView).WindowHandle;
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+            var fileSaverResult = await picker.PickSaveFileAsync();
+
+            if (fileSaverResult != null)
+            {
+                // Convert the MemoryStream to a byte array
+                byte[] fileContent = stream.ToArray();
+
+                // Write the content to the selected path
+                await File.WriteAllBytesAsync(fileSaverResult.Path, fileContent);
+            }
+            else
+            {
+                Message = $"Export  cancelled.";
+            }
+
+            StateHasChanged();
+
+            IsExportVisible = false;
+        }
+    }
+
+    // *****************************************************************************************
+    // IMPORT
+    // *****************************************************************************************
+
+    private async Task ImportReport()
+    {
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FileOpenPicker
+                {
+                    SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads
+                };
+
+            picker.FileTypeFilter.Add(".rdl");
+
+            var hwnd = ((MauiWinUIWindow)App.Current.Windows[0].Handler.PlatformView).WindowHandle;
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+            var file = await picker.PickSingleFileAsync();
+
+            if (file != null)
+            {
+                // Get the file name
+                CurrentImportReportName = file.Name.Replace(".rdl", "");
+
+                // Get the file bytes
+                CurrentImportReportContents = await File.ReadAllBytesAsync(file.Path);
+
+                // Convert CurrentImportReportContents to a string
+                string CurrentImportReportContentsString = System.Text.Encoding.UTF8.GetString(CurrentImportReportContents);
+
+                CurrentDatabaseName = XsdGenerator.GetDatabaseNameFromConnectString(CurrentImportReportContentsString);
+
+                // If the database name is empty, set it to Default
+                if (CurrentDatabaseName == "")
+                {
+                    CurrentDatabaseName = "Default";
+                }
+            }
+            else
+            {
+                Message = $"Import cancelled.";
+            }
+
+            IsImportReportPopupVisible = true;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            IsImportReportPopupVisible = false;
+            Message = ex.GetBaseException().Message;
+            _LogService.WriteToLog($"ImportReport() Error: {Message} - {ex.StackTrace.ToString()}");
+        }
+    }
+
+    private async Task ImportReportAsync()
+    {
+        try
+        {           
+            // Fix Report Name
+            CurrentImportReportName = CurrentImportReportName.Replace(".rdl", "");
+
+            // Remove spaces and special characters
+            CurrentImportReportName = databaseService.RemoveSpacesSpecialCharacters(CurrentImportReportName);
+
+            if (CurrentImportReportName.Trim() == "")
+            {
+                CurrentImportReportName = "NewReport";
+            }
+
+            CurrentImportReportName = DataService.FirstCharToUpper(CurrentImportReportName.Trim());
+
+            // Save the DataReport
+            String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{CurrentDatabaseName}/Reports";
+            var fileName = Path.Combine(ReportsFolder, $"{CurrentImportReportName}.rdlc");
+
+            // Rewrite the report to use "local data source"
+            string CurrentImportReportContentsString = System.Text.Encoding.UTF8.GetString(CurrentImportReportContents);
+
+            // TransformReport Connection To LocalConnection
+            CurrentImportReportContentsString = XsdGenerator.TransformReportToLocalConnection(CurrentImportReportContentsString);
+
+            // Convert the string to bytes
+            CurrentImportReportContents = System.Text.Encoding.UTF8.GetBytes(CurrentImportReportContentsString);
+
+            // Write the content to the selected path
+            await File.WriteAllBytesAsync(fileName, CurrentImportReportContents);
+
+            // Add the database name to the CurrentReportName
+            CurrentReportNameWithoutDatabase = CurrentImportReportName;
+
+            // Set CurrentReportName to include the database name
+            CurrentReportName = $"{CurrentDatabaseName}/{CurrentImportReportName}";
+
+            await LoadReportListDropdownAsync();
+
+            _LogService.WriteToLog($"ImportReportAsync() Imported: {CurrentReportName}");
+
+            IsImportReportPopupVisible = false;
+            StateHasChanged();
+
+            // Load the report definition (the RDLC file)
+            await using var reportStreamLoop = System.IO.File.OpenRead(fileName);
+
+            await GetReportData();
+
+            await RunReport(CurrentImportReportName, reportStreamLoop);
+        }
+        catch (Exception ex)
+        {
+            IsImportReportPopupVisible = false;
+            Message = ex.GetBaseException().Message;
+            _LogService.WriteToLog($"ImportReportAsync() Error: {Message} - {ex.StackTrace.ToString()}");
+        }
+    }
+
+    private void CloseImportReportPopup()
+    {
+        IsImportReportPopupVisible = false;
+    }
+
+}

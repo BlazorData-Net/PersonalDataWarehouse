@@ -1,0 +1,40 @@
+﻿@code {
+    [Parameter] public EventCallback Close { get; set; }
+    [Parameter] public List<string> GeneralErrors { get; set; } = new List<string>();
+}
+
+<div class="modal fade show" style="display: block;" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="window glass active">
+                <div class="title-bar">
+                    <div class="title-bar-text">@((GeneralErrors.Count == 0) ? "Saved" : "Errors")</div>
+                    <div class="title-bar-controls">
+                        <button aria-label="Close" @onclick="() => Close.InvokeAsync()"></button>
+                    </div>
+                </div>
+                @if (GeneralErrors.Count > 0)
+                {
+                    <div class="window-body has-space">
+                        <div class="has-scrollbar" style="width: 100%; height: 250px; overflow: auto;">
+                            <table>
+                                @foreach (var item in GeneralErrors)
+                                {
+                                    <tr>
+                                        <td>
+                                            <label style="font-weight: bold;">@item</label>
+                                        </td>
+                                    </tr>
+                                }
+                            </table>
+                        </div>
+                    </div>
+                }
+                <div class="window-body modal-footer d-flex justify-content-center">
+                    <button type="button" @onclick="() => Close.InvokeAsync()">Ok</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal-backdrop fade show"></div>

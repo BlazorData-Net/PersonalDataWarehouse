@@ -1,0 +1,2032 @@
+﻿@using BlazorDatasheet
+@using BlazorDatasheet.Core.Events
+@using BlazorDatasheet.Core.Events.Data
+@using BlazorDatasheet.Core.Events.Layout
+@using BlazorDatasheet.Core.Interfaces
+@using BlazorDatasheet.Core.Validation
+@using BlazorDatasheet.DataStructures.Geometry
+@using BlazorDatasheet.Edit.DefaultComponents
+@using BlazorDatasheet.Formula.Core
+@using BlazorDatasheet.Menu
+@using BlazorDatasheet.Render
+@using BlazorDatasheet.Core.Data
+@using BlazorDatasheet.Core.Formats
+@using BlazorDatasheet.Core.FormulaEngine
+@using Microsoft.Data.SqlClient
+@using System.Text;
+@using System.Data
+@using PersonalDataWarehouse.Services
+@using PersonalDataWarehouse.Components.Pages.ConnectionDialogs
+@using PersonalDataWarehouse.Model
+@using PersonalDataWarehouse.Models
+@using static PersonalDataWarehouse.Services.SettingsService
+@inject SettingsService SettingsService
+@inject DatabaseService databaseService
+@inject DataService DataService
+@inject LogService _LogService
+
+@if (CurrentDatabaseName != "")
+{
+    <div><b>Current Database: </b>  @CurrentDatabaseName</div>
+}
+<div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+    <button @onclick="OpenShowConnectionDialog" title="Connect to Server" style="background:none;border:none;">
+        <i class="material-icons" style="color:black;">cast_connected</i>
+    </button>
+
+    @if (tableNames.Count > 0)
+    {
+
+        <button @onclick="btnSave" title="Save" disabled="@SavingDisabled" style="background:none;border:none;">
+            <i class="material-icons" style="color:black;">save</i>
+        </button>
+        <span style="border-right: 2px solid #D3D3D3;"></span>
+        <button @onclick="() => sheet.Commands.Undo()" title="Undo" style="background:none;border:none;">
+            <i class="material-icons" style="color:black;">undo</i>
+        </button>
+        <button @onclick="() => sheet.Commands.Redo()" title="Redo" style="background:none;border:none;">
+            <i class="material-icons" style="color:black;">redo</i>
+        </button>
+        <span style="border-right: 2px solid #D3D3D3;"></span>
+        <button @onclick="InsertRowAfterSelection" title="Insert Row" style="background:none;border:none;">
+            <i class="material-icons" style="color:black;">add</i>
+        </button>
+        <button @onclick="RemoveRow" title="Delete Row" style="background:none;border:none;">
+            <i class="material-icons" style="color:black;">remove</i>
+        </button>
+        <span style="border-right: 2px solid #D3D3D3;"></span>
+        <button @onclick="Export" title="Export" style="background:none;border:none;">
+            <i class="material-icons" style="color:black;">file_upload</i>
+        </button>
+        <span style="border-right: 2px solid #D3D3D3;"></span>
+        <span>&nbsp; Table: </span>
+        <select @onchange="OnSelectedTableChanged" style="width: 300px; border-block:hidden">
+            @foreach (var tableName in tableNames)
+            {
+                <option value="@tableName">@tableName</option>
+            }
+        </select>
+        <span>&nbsp;</span>
+        <button @onclick="LoadTableDataButton">Load</button>
+        <span>&nbsp;</span>
+        <span style="border-right: 2px solid #D3D3D3;"></span>
+        <input type="checkbox" @onclick="() => onValidationChange()" @bind="UseValidation" id="CheckBoxValidation" />
+        <label for="CheckBoxValidation" style="margin-left: 8px; vertical-align: middle;">Validators</label>
+
+    }
+</div>
+
+@if (ShowConnectionDialog)
+{
+    <DatabaseConnectionDialog Close="CloseShowConnectionDialog"
+                              ConfigurationType="ConfigurationType.DatabaseConnectionOnly"
+                              OnSetConnection="SetConnectionString" />
+}
+
+@if (showPrimaryKeyWarningDialog)
+{
+    <PrimaryKeyWarningDialog Close="ClosePrimaryKeyWarningDialog" />
+}
+
+@if (showStatusDialog)
+{
+    <StatusDialog Close="CloseStatusDialog" GeneralErrors="colGeneralErrors" />
+}
+
+@if (isLoading)
+{
+    <br />
+    <div role="progressbar" class="marquee"></div>
+}
+else
+{
+    <div style="@(GridVisibility())">
+        <Datasheet Sheet="@sheet" MenuOptions=_sheetMenuOpt />
+    </div>
+    @if (isDontShowDataSheet)
+    {
+        <div style="text-align:center;">
+            <h4>Table display was cancelled.</h4>
+        </div>
+    }
+}
+
+@if (ShowLoadDataConfirmation)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Load All Data</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseShowLoadDataConfirmationPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+                        <p>This table has <span>@rowCount</span> rows. Do you want to display it in the datagrid?</p>
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="LoadTableDataIntoBlazorDataGrid">Yes</button>
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="CloseShowLoadDataConfirmationPopup">No</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@if (IsExportWizardVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Table Wizard</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseExportTableWizardPopup"></button>
+                        </div>
+                    </div>
+                    @if (DatabaseConnectionString != "")
+                    {
+                        <div class="window-body has-space">
+                            <table class="form-group" cellpadding="4" cellspacing="4">
+                                <tbody>
+                                    <tr>
+                                        <td>
+                                            <label>Select Source: </label>
+                                        </td>
+                                        <td>
+                                            <select @onchange="@(async (args) =>
+                                            {
+                                                CurrentSelectedTableWizard = args.Value?.ToString();
+                                            })">
+                                                @foreach (var table in TableList)
+                                                {
+                                                    <option value="@table" selected="@(table == CurrentSelectedTableWizard ? "selected" : null)">
+                                                        @table
+                                                    </option>
+                                                }
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <label>Table Name: </label>
+                                        </td>
+                                        <td>
+                                            <input type="text" id="txtTableName" @bind="@ImportTableName" placeholder="Enter Table Name" />
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <button @onclick="onExportTableWizardAsync">Select</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="window-body has-space">
+                            <p>Database connection is required to export data.</p>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@if (ShowTableDeleteConfirmation)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Confirm Table Delete</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseTableDeleteConfirmationPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+                        <span>This table exists. If you continue all existing content will be deleted.</span>
+                        <span><br /><br /></span>
+                        <button @onclick="() => doExportTableWizardAsync()">Yes</button>
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="CloseTableDeleteConfirmationPopup">No</button>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@if (IsExportProgressVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Export Data Progress</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseExportProgressPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <p>@ExportDataMesssage</p>
+                        <br />
+                        @if (IsExportLoading)
+                        {
+                            <div role="progressbar" class="marquee"></div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (ErrorMessage != "")
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Alert!</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseMessagePopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <div class="has-scrollbar" style="width: 100%; height: 100px; overflow: auto">
+                            @ErrorMessage
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+#nullable disable
+    private Sheet sheet;
+
+    bool isLoading = false;
+    bool UseValidation = false;
+    bool SavingDisabled = false;
+    string ErrorMessage = "";
+    string selectedTable = "";
+
+    List<string> colGeneralErrors = new List<string>();
+
+    string CurrentDatabaseName = "";
+    ConnectionType connectionType = ConnectionType.SQLServer;
+
+    List<string> tableNames = new List<string> { };
+    List<DTODatabaseColumn> TableColumns = new List<DTODatabaseColumn>();
+    List<string> PrimaryKeys = new List<string>();
+    List<int> ColChangedRows = new List<int>();
+
+    DataTable OriginalDataTable;
+    DataTable CurrentDataTable;
+    private string ImportTableName { get; set; } = "";
+    private string StorageAccountName { get; set; } = "";
+    private string ContainerName { get; set; } = "";
+    private string AccountKey { get; set; } = "";
+    int rowCount = 0;
+
+    string DatabaseConnectionString = "";
+
+    private bool ShowConnectionDialog { get; set; } = false;
+    private bool showPrimaryKeyWarningDialog { get; set; } = false;
+    private bool showStatusDialog { get; set; } = false;
+    private bool isDontShowDataSheet { get; set; } = false;
+    private bool ShowLoadDataConfirmation { get; set; } = false;
+    private bool ShowTableDeleteConfirmation { get; set; } = false;
+
+    private bool IsExportProgressVisible { get; set; } = false;
+    private bool IsExportLoading { get; set; } = false;
+    private string ExportDataMesssage { get; set; } = "";
+
+    private List<string> TableList = new List<string>();
+    private List<string> ViewList = new List<string>();
+    private bool IsExportWizardVisible { get; set; } = false;
+    private string CurrentSelectedTableWizard { get; set; } = "";
+
+    SheetMenuOptions _sheetMenuOpt = new SheetMenuOptions()
+        {
+            InsertColsEnabled = false,
+            HideColsEnabled = false,
+            HideRowsEnabled = false,
+            DeleteColsEnabled = false,
+            MergeEnabled = false,
+            SortRangeEnabled = false,
+            FilterColumnEnabled = false,
+            AlignmentEnabled = false,
+            InsertRowsEnabled = true,
+            DeleteRowsEnabled = true,
+            HeaderMenuEnabled = false
+        };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Create a new datasheet
+        sheet = new Sheet(numRows: 0, numCols: 0);
+
+        await LoadTableListDropdownAsync();
+    }
+
+    #region Datasheet Events
+    private void btnSave()
+    {
+        if (tableNames.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            SaveData();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.GetBaseException().Message;
+            _LogService.WriteToLog(ErrorMessage);
+        }
+    }
+
+    private void InsertRowAfterSelection()
+    {
+        if (tableNames.Count == 0)
+        {
+            return;
+        }
+
+        if (sheet.Selection.ActiveRegion == null)
+        {
+            if (sheet.NumRows == 0)
+            {
+                sheet.Rows.InsertAt(0);
+                return;
+            }
+        }
+
+        try
+        {
+            if (sheet.Selection.ActiveRegion != null)
+            {
+                sheet.Rows.InsertAt(sheet.Selection.ActiveRegion.TopLeft.row);
+
+                // Set the first column to null
+                sheet.Cells[sheet.Selection.ActiveRegion.TopLeft.row, 0].Value = DBNull.Value;
+            }
+        }
+        catch
+        {
+            // Do nothing
+        }
+    }
+
+    private void RemoveRow()
+    {
+        if (tableNames.Count == 0)
+        {
+            return;
+        }
+
+        if (sheet.Selection.ActiveRegion == null)
+        {
+            return;
+        }
+
+        sheet.Rows.RemoveAt(sheet.Selection.ActiveRegion.Top);
+    }
+    #endregion
+
+    private string GridVisibility()
+    {
+        if (sheet != null)
+        {
+            return sheet.NumRows > 0 ? "display:block;" : "display:none;";
+        }
+        else
+        {
+            return "display:none;";
+        }
+    }
+
+    #region private void CellChaged(object sender, CellDataChangedEventArgs args)
+    private void CellChanged(object sender, CellDataChangedEventArgs args)
+    {
+        // Only add the row if one cell is changed
+        if ((args.Positions.Count() > 0) && (args.Positions.Count() < 2))
+        {
+            // Get the row number
+            int row = Convert.ToInt32(args.Positions.FirstOrDefault().row);
+
+            if (sheet.Cells[row, 0].Value is int __Id)
+            {
+                // Add the row to the list of changed rows
+                ColChangedRows.Add(__Id);
+            }
+            else if (int.TryParse(sheet.Cells[row, 0].Value?.ToString(), out __Id))
+            {
+                // Add the row to the list of changed rows
+                ColChangedRows.Add(__Id);
+            }
+        }
+    }
+    #endregion
+
+    #region StatusDialog
+
+    private void ShowStatusDialog()
+    {
+        showStatusDialog = true;
+    }
+
+    private void CloseStatusDialog()
+    {
+        showStatusDialog = false;
+    }
+
+    private void ShowPrimaryKeyWarningDialog()
+    {
+        showPrimaryKeyWarningDialog = true;
+    }
+
+    private void ClosePrimaryKeyWarningDialog()
+    {
+        showPrimaryKeyWarningDialog = false;
+    }
+    #endregion
+
+    // ********************************************************************************************************************
+    // Database Connection
+    // ********************************************************************************************************************
+
+    #region private void OpenShowConnectionDialog()
+    private void OpenShowConnectionDialog()
+    {
+        ShowConnectionDialog = true;
+    }
+    #endregion
+
+    #region private void CloseShowConnectionDialog()
+    private void CloseShowConnectionDialog()
+    {
+        ShowConnectionDialog = false;
+    }
+    #endregion
+
+    #region private async Task OnSelectedTableChanged(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    private async Task OnSelectedTableChanged(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    {
+        await Task.Run(() => { selectedTable = e.Value.ToString(); });
+    }
+    #endregion
+
+    #region private async Task SetConnectionString(DatabaseImport paramDatabaseImport)
+    private async Task SetConnectionString(DatabaseImport paramDatabaseImport)
+    {
+        connectionType = paramDatabaseImport.ConnectionSetting.ConnectionType;
+
+        // Set the connection string to the gloabl variable
+        DatabaseConnectionString = paramDatabaseImport.ConnectionSetting.ConnectionString;
+
+        ShowConnectionDialog = false;
+
+        // Create a new datasheet
+        sheet = new Sheet(numRows: 0, numCols: 0);
+
+        isLoading = true;
+        StateHasChanged();
+
+        // Wait 1 second before loading the table data
+        // to join the UI thread
+        await Task.Delay(1000);
+
+        GetTablesInDatabase();
+
+        isLoading = false;
+        StateHasChanged();
+    }
+    #endregion
+
+    // ********************************************************************************************************************
+    // Load Data
+    // ********************************************************************************************************************
+
+    #region private void GetTablesInDatabase()
+    private void GetTablesInDatabase()
+    {
+        CurrentDatabaseName = "";
+        tableNames = new List<string>();
+
+        // Use the DatabaseConnectionString to get the tables in the database
+        using (SqlConnection connection = new SqlConnection(DatabaseConnectionString))
+        {
+            connection.Open();
+
+            // Set Current Databse Name
+            CurrentDatabaseName = connection.Database;
+
+            // Get the tables in the database
+            DataTable dt = connection.GetSchema("Tables");
+
+            // Get the table names
+            foreach (DataRow row in dt.Rows)
+            {
+                // Ensure that the table is not a system table
+                if (row[3].ToString() == "BASE TABLE")
+                {
+                    string tablename = $"[{(string)row[1]}].[{(string)row[2]}]";
+                    tableNames.Add(tablename);
+                }
+            }
+
+            connection.Close();
+
+            // order the table names
+            tableNames.Sort();
+
+            // Set the value to the first table
+            if (tableNames.Count > 0)
+            {
+                selectedTable = tableNames[0];
+            }
+        }
+    }
+    #endregion
+
+    #region private async Task LoadTableListDropdownAsync()
+    private async Task LoadTableListDropdownAsync()
+    {
+        TableList = new List<string>();
+
+        var colTables = await databaseService.GetAllTablesAsync();
+
+        if (colTables.Count > 0)
+        {
+            // Add each table to the list prepended with "Table: "
+            foreach (var table in colTables)
+            {
+                TableList.Add($"Table: {table}");
+            }
+        }
+
+        // Get all Views
+        var colViews = await databaseService.GetAllViewsAsync();
+
+        if (colViews.Count > 0)
+        {
+            // Add each view to the list prepended with "View: "
+            foreach (var view in colViews)
+            {
+                TableList.Add($"View: {view}");
+            }
+        }
+
+        // Sort the list
+        TableList.Sort();
+
+        // sort so that entries that begin with "default/" are listed first
+        TableList.Sort(
+            (x, y) => x.StartsWith("Default/") == y.StartsWith("Default/")
+            ? 0
+            : x.StartsWith("Default/") ? -1 : 1);
+
+        // Add: * Select DataSource* at the end of the list
+        TableList.Add("*Select DataSource*");
+
+        CurrentSelectedTableWizard = TableList.Last();
+    }
+    #endregion
+
+    private async Task onValidationChange()
+    {
+        await LoadTableData(selectedTable);
+    }
+
+    private async Task LoadTableDataButton()
+    {
+        await LoadTableData(selectedTable);
+    }
+
+    #region private async Task LoadTableData(string paramSelectedTable)
+    private async Task LoadTableData(string paramSelectedTable)
+    {
+        selectedTable = paramSelectedTable;
+
+        DataTable dt = new DataTable();
+
+        // Use the DatabaseConnectionString to get the data from the selected table
+        using (SqlConnection connection = new SqlConnection(DatabaseConnectionString))
+        {
+            try
+            {
+                connection.Open();
+
+                string sql = $"SELECT COUNT(*) as CountOfRows FROM {selectedTable}";
+
+                using (SqlCommand command = new SqlCommand(sql, connection))
+                {
+                    rowCount = (int)await command.ExecuteScalarAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                ErrorMessage = ex.GetBaseException().Message;
+                await _LogService.WriteToLogAsync(ErrorMessage);
+                isLoading = false;
+                StateHasChanged();
+                return;
+            }
+        }
+
+        // If the table has more than 100,000 rows, show a confirmation message
+        if (rowCount > 100000)
+        {
+            ShowLoadDataConfirmation = true;
+        }
+        else
+        {
+            await LoadTableDataIntoBlazorDataGrid();
+        }
+    }
+    #endregion
+
+    #region private async Task LoadTableDataIntoBlazorDataGrid()
+    private async Task LoadTableDataIntoBlazorDataGrid()
+    {
+        ErrorMessage = "";
+        isDontShowDataSheet = false;
+        ShowLoadDataConfirmation = false;
+
+        isLoading = true;
+        StateHasChanged();
+
+        // Wait 1 second before loading the table data
+        // to join the UI thread
+        await Task.Delay(1000);
+
+        // Use the DatabaseConnectionString to get the data from the selected table
+        using (SqlConnection connection = new SqlConnection(DatabaseConnectionString))
+        {
+            connection.Open();
+
+            try
+            {
+                // Clear the list of changed rows
+                ColChangedRows = new List<int>();
+
+                // Get the primary keys for the table
+                PrimaryKeys = GetPrimaryKey(connection, selectedTable);
+
+                // Get the computed columns for the table
+                List<string> ComputedColumns = GetComputedColumns(connection, selectedTable);
+
+                // Get a list of the column names
+                TableColumns = new List<DTODatabaseColumn>();
+
+                DataTable Columns = connection.GetSchema("Columns");
+
+                foreach (DataRow row in Columns.Rows)
+                {
+                    if ($"[{row["TABLE_SCHEMA"].ToString()}].[{row["TABLE_NAME"].ToString()}]" == selectedTable)
+                    {
+                        DTODatabaseColumn objTableColumns = new DTODatabaseColumn();
+
+                        objTableColumns.ColumnName = row["COLUMN_NAME"].ToString();
+                        objTableColumns.ColumnType = row["DATA_TYPE"].ToString();
+
+                        if (row["CHARACTER_MAXIMUM_LENGTH"] != DBNull.Value)
+                        {
+                            objTableColumns.ColumnLength = Convert.ToInt32(row["CHARACTER_MAXIMUM_LENGTH"]);
+                        }
+                        else
+                        {
+                            objTableColumns.ColumnLength = 0;
+                        }
+
+                        if (PrimaryKeys.Contains(row["COLUMN_NAME"].ToString()))
+                        {
+                            objTableColumns.IsPrimaryKey = true;
+                        }
+                        else
+                        {
+                            objTableColumns.IsPrimaryKey = false;
+                        }
+
+                        TableColumns.Add(objTableColumns);
+                    }
+                }
+
+                // Remove from TableColumns any colums types of unique identifiers
+                TableColumns = TableColumns.Where(x => x.ColumnType != "uniqueidentifier").ToList();
+
+                // Remove from TableColumns any colums types of hierarchyid
+                TableColumns = TableColumns.Where(x => x.ColumnType != "hierarchyid").ToList();
+
+                // Remove from TableColumns any colums types of varbinary
+                TableColumns = TableColumns.Where(x => x.ColumnType != "varbinary").ToList();
+
+                // Remove from TableColumns any colums types of geography
+                TableColumns = TableColumns.Where(x => x.ColumnType != "geography").ToList();
+
+                // Remove from TableColumns any colums types of computed
+                // remove colums conatined in the ComputedColumns list
+                TableColumns = TableColumns.Where(x => !ComputedColumns.Contains(x.ColumnName)).ToList();
+
+                // Get Table columns from TableColumns as comma seperated values
+                string strTableColumns = string.Join(",", TableColumns.Select(x => $"[{x.ColumnName}]").ToArray());
+
+                // If strTableColumns contains a column name of __Id, then show error message
+                if (strTableColumns.Contains("__Id"))
+                {
+                    ErrorMessage = "Cannot load. The table contains a column named __Id. This column name is reserved.";
+                    isDontShowDataSheet = true;
+                    isLoading = false;
+                    StateHasChanged();
+                    return;
+                }
+
+                string sql = "";
+
+                // See if there are any primary keys
+                if (PrimaryKeys.Count == 0)
+                {
+                    SavingDisabled = true;
+
+                    ShowPrimaryKeyWarningDialog();
+
+                    // Get the data from the selected table
+                    sql = $"SELECT 0 AS __Id, {strTableColumns} FROM {selectedTable}";
+                }
+                else
+                {
+                    SavingDisabled = false;
+
+                    // Turn PrimaryKeys into a comma seperated string
+                    string strPrimaryKeys = string.Join(",", PrimaryKeys.Select(x => $"[{x}]").ToArray());
+
+                    // Get the data from the selected table
+                    sql = $"SELECT ROW_NUMBER() OVER (ORDER BY {strPrimaryKeys}) AS __Id, {strTableColumns} FROM {selectedTable}";
+                }
+
+                SqlDataAdapter adapter = new SqlDataAdapter(sql, connection);
+                DataTable dt = new DataTable();
+                adapter.Fill(dt);
+
+                connection.Close();
+
+                // Save the original data
+                OriginalDataTable = dt.Copy();
+
+                // Make the first column __Id
+                TableColumns.Insert(0, new DTODatabaseColumn { ColumnName = "__Id", ColumnType = "int", ColumnLength = 0, IsPrimaryKey = true });
+
+                // Load Data into the Datasheet
+                LoadTableHeadersAndData(TableColumns, dt);
+            }
+            catch (Exception ex)
+            {
+                ErrorMessage = ex.GetBaseException().Message;
+                await _LogService.WriteToLogAsync(ErrorMessage);
+
+                if (connection.State == ConnectionState.Open)
+                {
+                    connection.Close();
+                }
+
+                isLoading = false;
+                StateHasChanged();
+            }
+        }
+
+        isLoading = false;
+        StateHasChanged();
+    }
+    #endregion
+
+    #region private void LoadTableHeadersAndData(List<DTODatabaseColumn> paramDatabaseColumns, DataTable paramDataTable)
+    private void LoadTableHeadersAndData(List<DTODatabaseColumn> paramDatabaseColumns, DataTable paramDataTable)
+    {
+        // Create sheet with the number of columns
+        sheet = new Sheet(paramDataTable.Rows.Count, paramDatabaseColumns.Count);
+
+        // Turn off history
+        sheet.BatchUpdates();
+        sheet.Commands.PauseHistory();
+
+        // Hide the __Id column
+        sheet.Columns.Hide(0, 1);
+
+        int i = 0;
+        foreach (DTODatabaseColumn objDatabaseColumn in paramDatabaseColumns)
+        {
+            // Set the column headings
+            sheet.Columns.SetHeadings(i, i, objDatabaseColumn.ColumnName);
+
+            // Set the column types
+            sheet.Cells.SetType(new ColumnRegion(i), objDatabaseColumn.ColumnType);
+
+            if (UseValidation)
+            {
+                // Integer Validator
+                if (objDatabaseColumn.ColumnType.Contains("int"))
+                {
+                    sheet.Validators.Add(new ColumnRegion(i), new NumberValidator(false));
+                }
+
+                // Length Validator
+                if (objDatabaseColumn.ColumnLength > 0)
+                {
+                    if (objDatabaseColumn.ColumnType.Contains("char"))
+                    {
+                        sheet.Validators.Add(new ColumnRegion(i), new LengthValidator(objDatabaseColumn.ColumnLength, true));
+                    }
+                }
+            }
+
+            i++;
+        }
+
+        // Load the data into the sheet
+        int ii = 0;
+        foreach (DataRow dataRow in paramDataTable.Rows)
+        {
+            i = 0;
+            foreach (DTODatabaseColumn objDatabaseColumn in paramDatabaseColumns)
+            {
+                // Set the cell value
+                sheet.Cells[ii, i].Value = GetCellValue(dataRow[i].ToString(), objDatabaseColumn.ColumnType);
+
+                if (objDatabaseColumn.IsPrimaryKey)
+                {
+                    // Set the cell to read only if it is a primary key
+                    sheet.Cells[ii, i].Format = new CellFormat() { IsReadOnly = false, BackgroundColor = "lightgrey" };
+                }
+
+                i++;
+            }
+
+            ii++;
+        }
+
+        // Wire up a method to catch cell changes
+        sheet.Cells.CellsChanged += CellChanged;
+
+        // Wire up a method to catch row changes
+        // Do not allow the last row to be deleted
+        sheet.Rows.Removed += (sender, args) =>
+        {
+            // Turn off history
+            sheet.BatchUpdates();
+            sheet.Commands.PauseHistory();
+
+            if (sheet.NumRows == 0)
+            {
+                sheet.Rows.InsertAt(0);
+            }
+
+            // Turn off history
+            sheet.EndBatchUpdates();
+            sheet.Commands.ResumeHistory();
+        };
+
+        // Turn on history
+        sheet.EndBatchUpdates();
+        sheet.Commands.ResumeHistory();
+    }
+    #endregion
+
+    // ********************************************************************************************************************
+    // Save Data
+    // ********************************************************************************************************************
+
+    #region private void SaveData()
+    private void SaveData()
+    {
+        // # Get the current data in the sheet
+
+        colGeneralErrors = new List<string>();
+
+        // Initialize a new DataTable
+        CurrentDataTable = new DataTable();
+
+        // Define columns based on TableColumns
+        foreach (var column in TableColumns)
+        {
+            CurrentDataTable.Columns.Add(new DataColumn(column.ColumnName, GetColumnType(column.ColumnType)));
+        }
+
+        // Populate the DataTable with rows from the sheet
+        for (int i = 0; i < sheet.NumRows; i++)
+        {
+            DataRow row = CurrentDataTable.NewRow();
+
+            for (int j = 0; j < TableColumns.Count; j++)
+            {
+                try
+                {
+                    if ((sheet.Cells[i, j].Value != null) && (sheet.Cells[i, j].Value != DBNull.Value))
+                    {
+                        if (CurrentDataTable.Columns[j].DataType.FullName == "System.Int32")
+                        {
+                            if (sheet.Cells[i, j]?.Value?.ToString() == "")
+                            {
+                                row[j] = DBNull.Value;
+                            }
+                            else
+                            {
+                                row[j] = Convert.ToInt32(sheet.Cells[i, j].Value);
+                            }
+                        }
+                        else if (CurrentDataTable.Columns[j].DataType.FullName == "System.DateTime")
+                        {
+                            if (sheet.Cells[i, j]?.Value?.ToString() == "")
+                            {
+                                row[j] = DBNull.Value;
+                            }
+                            else
+                            {
+                                row[j] = Convert.ToDateTime(sheet.Cells[i, j].Value);
+                            }
+                        }
+                        else if (CurrentDataTable.Columns[j].DataType.FullName == "System.TimeSpan")
+                        {
+                            if (sheet.Cells[i, j]?.Value?.ToString() == "")
+                            {
+                                row[j] = DBNull.Value;
+                            }
+                            else
+                            {
+                                var TimeSpanValue = sheet.Cells[i, j].Value.ToString();
+
+                                if (DateTime.TryParse(TimeSpanValue, out var parsedDateTime))
+                                {
+                                    row[j] = parsedDateTime.TimeOfDay.ToString();
+                                }
+                                else if (TimeSpan.TryParse(TimeSpanValue, out var parsedTimeSpan))
+                                {
+                                    row[j] = parsedTimeSpan;
+                                }
+                                else
+                                {
+                                    row[j] = TimeSpanValue;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            string currentValue = "";
+
+                            currentValue = sheet.Cells[i, j].Value?.ToString() ?? "";
+
+                            currentValue = currentValue.Replace("\r\n", " ")
+                                                       .Replace("\t", " ")
+                                                       .Replace("\r", " ")
+                                                       .Replace("\n", " ")
+                                                       .Trim();
+
+                            row[j] = currentValue;
+                        }
+                    }
+                    else
+                    {
+                        row[j] = CurrentDataTable.Columns[j].DefaultValue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    colGeneralErrors.Add(ex.GetBaseException().Message);
+                }
+            }
+
+            CurrentDataTable.Rows.Add(row);
+        }
+
+        ProcessChanges();
+    }
+    #endregion
+
+    #region public ProcessChanges()
+    public void ProcessChanges()
+    {
+        try
+        {
+            // *****************************************
+            // Updates
+            // *****************************************
+
+            ProcessUpdatedRows();
+
+            // *****************************************
+            // Inserts
+            // *****************************************
+
+            ProcessInsertedRows();
+
+            // *****************************************
+            // Deletes
+            // *****************************************
+
+            ProcessDeletedRows();
+        }
+        catch (Exception ex)
+        {
+            colGeneralErrors.Add(ex.GetBaseException().Message);
+        }
+
+        ShowStatusDialog();
+    }
+    #endregion
+
+    #region void ProcessUpdatedRows()
+    private void ProcessUpdatedRows()
+    {
+        // Remove duplicate changed rows
+        ColChangedRows = ColChangedRows.Distinct().ToList();
+
+        // Process each changed row
+        foreach (int row in ColChangedRows)
+        {
+            // Skip rows where __Id column is 0 or null
+            if (row == 0)
+                continue;
+
+            // Get row from CurrentDataTable where __Id matches
+            DataRow rowCur = CurrentDataTable.Select($"__Id = {row}").FirstOrDefault();
+
+            var colSQLUpdateColumns = new List<string>();
+            var colSQLWhereColumns = new List<string>();
+            var parameters = new List<SqlParameter>();
+
+            // Build SQL update and where clause lists
+            for (int i = 1; i < TableColumns.Count; i++)
+            {
+                string columnName = TableColumns[i].ColumnName;
+                string columnType = TableColumns[i].ColumnType;
+                int columnLength = TableColumns[i].ColumnLength;
+
+                // Sanitize parameter name
+                string paramName = columnName.Replace(" ", "_");
+
+                object columnValue = rowCur[i] != DBNull.Value ? rowCur[i] : DBNull.Value;
+
+                if (PrimaryKeys.Contains(columnName))
+                {
+                    colSQLWhereColumns.Add($"[{columnName}] = @{paramName}_where");
+
+                    SqlParameter objSqlParameter = new SqlParameter();
+                    objSqlParameter.ParameterName = $"@{paramName}_where";
+                    objSqlParameter.Value = GetCellValue(columnValue, columnType);
+                    objSqlParameter.SqlDbType = GetSQLParameterType(columnType);
+
+                    parameters.Add(objSqlParameter);
+                }
+                else
+                {
+                    colSQLUpdateColumns.Add($"[{columnName}] = @{paramName}");
+
+                    SqlParameter objSqlParameter = new SqlParameter();
+                    objSqlParameter.ParameterName = $"@{paramName}";
+                    objSqlParameter.Value = GetCellValue(columnValue, columnType);
+                    objSqlParameter.SqlDbType = GetSQLParameterType(columnType);
+
+                    parameters.Add(objSqlParameter);
+                }
+            }
+
+            if (colSQLUpdateColumns.Any())
+            {
+                string updateSQL = string.Join(",", colSQLUpdateColumns);
+                string whereSQL = string.Join(" AND ", colSQLWhereColumns);
+                using (SqlConnection connection = new SqlConnection(DatabaseConnectionString))
+                {
+                    try
+                    {
+                        connection.Open();
+
+                        string sql = $"UPDATE {selectedTable} SET {updateSQL} WHERE {whereSQL}";
+
+                        using (SqlCommand command = new SqlCommand(sql, connection))
+                        {
+                            command.Parameters.AddRange(parameters.ToArray());
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        colGeneralErrors.Add($"Error on Row {row} - {ex.GetBaseException().Message}");
+                    }
+                    finally
+                    {
+                        if (connection.State == ConnectionState.Open)
+                        {
+                            connection.Close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    #endregion
+
+    #region void ProcessInsertedRows()
+    private void ProcessInsertedRows()
+    {
+        // Find Added Rows
+        var addedRows = CurrentDataTable.AsEnumerable()
+            .Where(row => row.Field<object>("__Id") == null)
+            .ToList();
+
+        // Get the identity columns
+        List<string> colIdentityColumns = new List<string>();
+
+        using (SqlConnection connection = new SqlConnection(DatabaseConnectionString))
+        {
+            try
+            {
+                connection.Open();
+                colIdentityColumns = GetIdentityColumns(connection, selectedTable);
+            }
+            finally
+            {
+                if (connection.State == ConnectionState.Open)
+                {
+                    connection.Close();
+                }
+            }
+        }
+
+        // Loop through the added rows
+        foreach (var rowCur in addedRows)
+        {
+            var colSQLUpdateColumns = new List<string>();
+            var parameters = new List<SqlParameter>();
+
+            // Loop through the columns, skipping the _Id column
+            for (int i = 1; i < TableColumns.Count; i++)
+            {
+                if (!colIdentityColumns.Contains(TableColumns[i].ColumnName))
+                {
+                    string columnName = TableColumns[i].ColumnName;
+                    string columnType = TableColumns[i].ColumnType;
+
+                    // Sanitize parameter name
+                    string paramName = columnName.Replace(" ", "_");
+
+                    colSQLUpdateColumns.Add($"[{columnName}]");
+
+                    object columnValue = rowCur[i] != DBNull.Value && rowCur[i] != null ? rowCur[i] : DBNull.Value;
+
+                    SqlParameter objSqlParameter = new SqlParameter();
+                    objSqlParameter.ParameterName = $"@{paramName}";
+                    objSqlParameter.Value = columnValue;
+                    objSqlParameter.SqlDbType = GetSQLParameterType(columnType);
+
+                    parameters.Add(objSqlParameter);
+                }
+            }
+
+            if (colSQLUpdateColumns.Any())
+            {
+                string updateSQLColumns = string.Join(",", colSQLUpdateColumns);
+                string parameterNames = string.Join(",", parameters.Select(p => p.ParameterName));
+
+                using (SqlConnection connection = new SqlConnection(DatabaseConnectionString))
+                {
+                    try
+                    {
+                        connection.Open();
+
+                        string sql = $"INSERT INTO {selectedTable} ({updateSQLColumns}) VALUES ({parameterNames})";
+
+                        using (SqlCommand command = new SqlCommand(sql, connection))
+                        {
+                            command.Parameters.AddRange(parameters.ToArray());
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        colGeneralErrors.Add($"Error on Row {rowCur} - {ex.GetBaseException().Message}");
+                    }
+                    finally
+                    {
+                        if (connection.State == ConnectionState.Open)
+                        {
+                            connection.Close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    #endregion
+
+    #region void ProcessDeletedRows()
+    private void ProcessDeletedRows()
+    {
+        // Get all the _Id values from CurrentDataTable that are not null
+        var currentIds = CurrentDataTable.AsEnumerable()
+            .Where(row => row.Field<object>("__Id") != null)
+            .Select(r => r.Field<int>("__Id"))
+            .ToList();
+
+        // Convert currentIds to long
+        List<long> longCurrentIds = currentIds.Select(x => (long)x).ToList();
+
+        // Filter OriginalDataTable to get the rows
+        // that are not present in CurrentDataTable
+        var deletedRows = OriginalDataTable.AsEnumerable()
+            .Where(row => !longCurrentIds.Contains(row.Field<long>("__Id")));
+
+        // Loop through the deleted rows
+        foreach (var rowCur in deletedRows)
+        {
+            var colSQLWhereColumns = new List<string>();
+            var parameters = new List<SqlParameter>();
+
+            // Loop through the columns, skipping the _Id column
+            for (int i = 1; i < TableColumns.Count; i++)
+            {
+                string columnName = TableColumns[i].ColumnName;
+                string columnType = TableColumns[i].ColumnType;
+
+                // Sanitize parameter name
+                string paramName = columnName.Replace(" ", "_");
+
+                object columnValue = rowCur[i] != DBNull.Value && rowCur[i] != null
+                                     ? rowCur[i]
+                                     : DBNull.Value;
+
+                if (PrimaryKeys.Contains(columnName))
+                {
+                    colSQLWhereColumns.Add($"[{columnName}] = @{paramName}");
+
+                    SqlParameter objSqlParameter = new SqlParameter();
+                    objSqlParameter.ParameterName = $"@{paramName}";
+                    objSqlParameter.Value = columnValue;
+                    objSqlParameter.SqlDbType = GetSQLParameterType(columnType);
+
+                    parameters.Add(objSqlParameter);
+                }
+            }
+
+            if (colSQLWhereColumns.Any())
+            {
+                string whereSQL = string.Join(" AND ", colSQLWhereColumns);
+
+                using (SqlConnection connection = new SqlConnection(DatabaseConnectionString))
+                {
+                    try
+                    {
+                        connection.Open();
+
+                        string sql = $"DELETE FROM {selectedTable} WHERE {whereSQL}";
+
+                        using (SqlCommand command = new SqlCommand(sql, connection))
+                        {
+                            command.Parameters.AddRange(parameters.ToArray());
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        colGeneralErrors.Add($"Error on Row {rowCur} - {ex.GetBaseException().Message}");
+                    }
+                    finally
+                    {
+                        if (connection.State == ConnectionState.Open)
+                        {
+                            connection.Close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    #endregion
+
+    private void CloseShowLoadDataConfirmationPopup()
+    {
+        sheet = new Sheet(0, 0);
+        isDontShowDataSheet = true;
+        ShowLoadDataConfirmation = false;
+    }
+
+    // *************
+    // Export
+    // *************
+
+    #region Export
+    private async Task Export()
+    {
+        // If connectiontype is Fabric AzureStorage must be configured
+        if (connectionType == ConnectionType.FabricWarehouse)
+        {
+            // Get Azure Storage Connection
+            var AzureStorageConnection = SettingsService.Settings.ConnectionSettings
+            .Where(c => c.ConnectionType == ConnectionType.AzureStorage)
+            .Select(c => c)
+            .FirstOrDefault();
+
+            if (AzureStorageConnection != null)
+            {
+                StorageAccountName = AzureStorageConnection.AzureStorageSettings.StorageAccountName;
+                ContainerName = AzureStorageConnection.AzureStorageSettings.ContainerName;
+                AccountKey = await SecureStorage.Default.GetAsync($"AzureStorageAccountKey");
+            }
+            else
+            {
+                ErrorMessage = "Azure Storage must be configured to export data for Fabric.";
+                return;
+            }
+        }
+
+        IsExportWizardVisible = true;
+    }
+
+    private void CloseExportTableWizardPopup()
+    {
+        IsExportWizardVisible = false;
+    }
+
+    private void CloseTableDeleteConfirmationPopup()
+    {
+        ShowTableDeleteConfirmation = false;
+    }
+
+    private async Task onExportTableWizardAsync()
+    {
+        // Must select a data source
+        if (CurrentSelectedTableWizard == "*Select DataSource*")
+        {
+            ErrorMessage = "Please select a data source.";
+            return;
+        }
+
+        if (ImportTableName.Trim() == "")
+        {
+            ErrorMessage = "Please enter a table name.";
+            return;
+        }
+
+        bool TableExists = false;
+
+        using (SqlConnection connection = new SqlConnection(DatabaseConnectionString))
+        {
+            try
+            {
+                connection.Open();
+
+                // Determine if the table exists
+                string query = $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '{ImportTableName}'";
+
+                using (SqlCommand command = new SqlCommand(query, connection))
+                {
+                    int count = (int)await command.ExecuteScalarAsync();
+
+                    if (count > 0)
+                    {
+                        TableExists = true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ErrorMessage = ex.GetBaseException().Message;
+                await _LogService.WriteToLogAsync(ErrorMessage);
+            }
+            finally
+            {
+                if (connection.State == ConnectionState.Open)
+                {
+                    connection.Close();
+                }
+            }
+        }
+
+        if (TableExists)
+        {
+            ShowTableDeleteConfirmation = true;
+            return;
+        }
+        else
+        {
+            // Call the Export method
+            await doExportTableWizardAsync();
+        }
+    }
+
+    private async Task doExportTableWizardAsync()
+    {
+        int i = 0;
+
+        // Close any popups
+        ShowTableDeleteConfirmation = false;
+        IsExportWizardVisible = false;
+
+        // Reset the error message
+        ErrorMessage = "";
+
+        // Open ExportProgress
+        IsExportLoading = true;
+        IsExportProgressVisible = true;
+        ExportDataMesssage = "Exporting Data...";
+
+        try
+        {
+            IEnumerable<IDictionary<string, object>> DataSourceData = new List<IDictionary<string, object>>();
+            Dataloader dataloader = new Dataloader();
+            string DataName = "";
+
+            // Load the data based on the CurrentSelectedTableWizard type
+            if (CurrentSelectedTableWizard.StartsWith("Table:"))
+            {
+                string TableWizardName = CurrentSelectedTableWizard.Substring(7);
+
+                // Separate the table name from the database
+                var (Database, TableName) = DataService.ExtractDatabaseAndTable(TableWizardName);
+
+                // Get the data from the Parquet file
+                DataSourceData = await dataloader.LoadParquet(Database, TableName);
+                DataName = TableName;
+            }
+            else if (CurrentSelectedTableWizard.StartsWith("View:"))
+            {
+                string TableWizardName = CurrentSelectedTableWizard.Substring(6);
+
+                // Separate the view name from the database
+                var (Database, ViewName) = DataService.ExtractDatabaseAndTable(TableWizardName);
+
+                // Get the data from the View file
+                DataSourceData = await dataloader.LoadView(Database, ViewName);
+                DataName = ViewName;
+            }
+
+            // If DataSourceData is empty, show an error message
+            if (DataSourceData.Count() == 0)
+            {
+                ErrorMessage = "No data found in the selected data source.";
+                return;
+            }
+
+            // Parse objDataParametersResult.data to a list of dictionaries
+            var columns = DataSourceData.Select(x => x.ToDictionary(y => y.Key, y => y.Value)).FirstOrDefault();
+            var FinalColumns = columns.ToDictionary(x => x.Key, x => Type.GetType("System.String"));
+
+            // Turn data into a DataTable
+            DataTable ExportDataTable = DataService.ConvertToDataTable(DataSourceData, FinalColumns);
+
+            var TotalRows = ExportDataTable.Rows.Count;
+
+            List<string> ColumnNames = new List<string>();
+
+            foreach (var column in FinalColumns)
+            {
+                ColumnNames.Add(column.Key);
+            }
+
+            // Create a SQL script to create the table using ColumnNames as the columns with all columns as nvarchar(max)
+            string CreateTableSQL = DataService.GenerateCreateTableScript(ImportTableName, ColumnNames, connectionType);
+
+            if (connectionType == ConnectionType.FabricWarehouse)
+            {
+                ExportDataMesssage = $"Exporting {TotalRows} rows of data...";
+                await Task.Delay(1000);
+                StateHasChanged();
+
+                // Connect to the database and delete ImportTableName if it exists
+                using (SqlConnection connection = new SqlConnection(DatabaseConnectionString))
+                {
+                    try
+                    {
+                        connection.Open();
+
+                        // Drop the table if it exists
+                        ExportDataMesssage = $"Drop the table if it exists...";
+                        await Task.Delay(1000);
+                        StateHasChanged();
+
+                        string query = $"IF OBJECT_ID('{ImportTableName}', 'U') IS NOT NULL DROP TABLE {ImportTableName}";
+
+                        using (SqlCommand command = new SqlCommand(query, connection))
+                        {
+                            command.ExecuteNonQuery();
+                        }
+
+                        // Create the table
+                        ExportDataMesssage = $"Create the table... Insert the data...";
+                        await Task.Delay(1000);
+                        StateHasChanged();
+
+                        using (SqlCommand command = new SqlCommand(CreateTableSQL, connection))
+                        {
+                            command.ExecuteNonQuery();
+                        }
+
+                        // Insert the data
+                        ExportDataMesssage = $"Processing...";
+                        await Task.Delay(1000);
+                        StateHasChanged();
+
+                        // Split DataTable into chunks
+                        var dtChunks = ExportDataTable.AsEnumerable().Select((row, index) => new { row, index })
+                            .GroupBy(x => x.index / 200000)
+                            .Select(g => g.Select(x => x.row));
+
+                        // Set TotalChunks to how many chunks we will have based on the total row count
+                        int TotalChunks = dtChunks.Count();
+
+                        i = 1;
+                        // Convert each chunk to a DataTable
+                        foreach (var dtChunk in dtChunks)
+                        {
+                            if (TotalChunks > 1)
+                            {
+                                ExportDataMesssage = $"Processing {ImportTableName} - {i} of {TotalChunks} batches...";
+                            }
+                            else
+                            {
+                                ExportDataMesssage = $"Processing {ImportTableName}...";
+                            }
+
+                            await Task.Delay(1000);
+                            StateHasChanged();
+
+                            DataTable dt = dtChunk.CopyToDataTable();
+
+                            // *****************************************
+                            // Import data from UpdateDataTable into Fabric
+                            // *****************************************
+
+                            if (dt.Rows.Count > 0)
+                            {
+                                ImportDataTableIntoFabric objImportDataTableIntoFabric = new ImportDataTableIntoFabric();
+                                objImportDataTableIntoFabric.InputDataTable = dt;
+                                objImportDataTableIntoFabric.TableName = ImportTableName;
+                                objImportDataTableIntoFabric.DataWarehouseConnectionString = DatabaseConnectionString;
+                                objImportDataTableIntoFabric.StorageAccountName = StorageAccountName;
+                                objImportDataTableIntoFabric.StorageAccountKey = AccountKey;
+                                objImportDataTableIntoFabric.StorageContainer = ContainerName;
+
+                                var result = await objImportDataTableIntoFabric.ImportDataAsync();
+
+                                if (result != "")
+                                {
+                                    colGeneralErrors.Add(result);
+                                }
+                            }
+
+                            i++;
+                        }
+
+                        // If colGeneralErrors has any errors, show the error message
+                        if (colGeneralErrors.Count > 0)
+                        {
+                            string FinalErrorMessage = "";
+
+                            // Show the error messages in the colGeneralErrors collection
+                            foreach (var error in colGeneralErrors)
+                            {
+                                FinalErrorMessage = FinalErrorMessage + " - " + error;
+                            }
+
+                            ErrorMessage = FinalErrorMessage;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ErrorMessage = ex.GetBaseException().Message;
+                        await _LogService.WriteToLogAsync(ErrorMessage);
+                    }
+                    finally
+                    {
+                        if (connection.State == ConnectionState.Open)
+                        {
+                            connection.Close();
+                        }
+                    }
+                }
+            }
+
+            if (connectionType == ConnectionType.SQLServer)
+            {
+                ExportDataMesssage = $"Exporting {TotalRows} rows of data...";
+                await Task.Delay(1000);
+                StateHasChanged();
+
+                // Connect to the database and delete ImportTableName if it exists
+                using (SqlConnection connection = new SqlConnection(DatabaseConnectionString))
+                {
+                    try
+                    {
+                        connection.Open();
+
+                        // Drop the table if it exists
+                        ExportDataMesssage = $"Drop the table if it exists...";
+                        await Task.Delay(1000);
+                        StateHasChanged();
+
+                        string query = $"IF OBJECT_ID('{ImportTableName}', 'U') IS NOT NULL DROP TABLE {ImportTableName}";
+
+                        using (SqlCommand command = new SqlCommand(query, connection))
+                        {
+                            command.ExecuteNonQuery();
+                        }
+
+                        // Create the table
+                        ExportDataMesssage = $"Create the table... Bulk insert the data...";
+                        await Task.Delay(1000);
+                        StateHasChanged();
+
+                        using (SqlCommand command = new SqlCommand(CreateTableSQL, connection))
+                        {
+                            command.ExecuteNonQuery();
+                        }
+
+                        // Bulk insert the data
+                        ExportDataMesssage = $"Processing...";
+                        await Task.Delay(1000);
+                        StateHasChanged();
+
+                        i = 0;
+                        using (SqlBulkCopy bulkCopy = new SqlBulkCopy(connection))
+                        {
+                            bulkCopy.DestinationTableName = ImportTableName;
+
+                            foreach (DataColumn column in ExportDataTable.Columns)
+                            {
+                                bulkCopy.ColumnMappings.Add(i, i);
+                                i++;
+                            }
+
+                            bulkCopy.WriteToServer(ExportDataTable);
+                        }
+
+                    }
+                    catch (Exception ex)
+                    {
+                        ErrorMessage = ex.GetBaseException().Message;
+                        await _LogService.WriteToLogAsync(ErrorMessage);
+                    }
+                    finally
+                    {
+                        if (connection.State == ConnectionState.Open)
+                        {
+                            connection.Close();
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            IsExportLoading = false;
+            IsExportProgressVisible = false;
+            StateHasChanged();
+
+            // This will cause the Error dialog to show
+            ErrorMessage = ex.GetBaseException().Message;
+            await _LogService.WriteToLogAsync(ErrorMessage);
+        }
+        finally
+        {
+            IsExportLoading = false;
+            IsExportProgressVisible = false;
+            IsExportWizardVisible = false;
+
+            // Refresh the list of tables
+            GetTablesInDatabase();
+
+            if (ErrorMessage == "")
+            {
+                ErrorMessage = "Export Complete";
+            }
+        }
+    }
+    #endregion
+
+    private void CloseExportProgressPopup()
+    {
+        IsExportProgressVisible = false;
+    }
+
+    private void CloseMessagePopup()
+    {
+        ErrorMessage = "";
+    }
+
+    // ********************************************************************************************************************
+    // Utility
+    // ********************************************************************************************************************
+
+    #region public List<string> GetPrimaryKey(SqlConnection connection, string tableName)
+    public List<string> GetPrimaryKey(SqlConnection connection, string tableName)
+    {
+        List<string> PrimaryKeys = new List<string>();
+
+        try
+        {
+            string query = $@"
+                SELECT c.Name
+                FROM sys.index_columns ic
+                INNER JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+                INNER JOIN sys.indexes i ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+                WHERE i.is_primary_key = 1 AND ic.object_id = OBJECT_ID('{tableName}')";
+
+            using (SqlCommand command = new SqlCommand(query, connection))
+            {
+                using (SqlDataReader reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (reader["Name"] != DBNull.Value)
+                        {
+                            PrimaryKeys.Add(reader["Name"].ToString());
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+
+        return PrimaryKeys;
+    }
+    #endregion
+
+    #region public List<string> GetComputedColumns(SqlConnection connection, string tableName)
+    public List<string> GetComputedColumns(SqlConnection connection, string tableName)
+    {
+        List<string> ComputedColumns = new List<string>();
+
+        try
+        {
+            string query = $@"
+                                SELECT name AS ColumnName
+                                FROM sys.columns
+                                WHERE object_id = OBJECT_ID('{tableName}') AND is_computed = 1";
+
+            using (SqlCommand command = new SqlCommand(query, connection))
+            {
+                using (SqlDataReader reader = command.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        if (reader["ColumnName"] != DBNull.Value)
+                        {
+                            ComputedColumns.Add(reader["ColumnName"].ToString());
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+
+        return ComputedColumns;
+    }
+    #endregion
+
+    #region public List<string> GetIdentityColumns(SqlConnection connection, string tableName)
+    public List<string> GetIdentityColumns(SqlConnection connection, string tableName)
+    {
+        List<string> identityColumns = new List<string>();
+
+        string strTableNameCleaned = StripTableSchemaAndBrackets(tableName);
+
+        try
+        {
+            string query = $@"
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME like '%{strTableNameCleaned}%'
+              AND COLUMNPROPERTY(OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME), COLUMN_NAME, 'IsIdentity') = 1";
+
+            using (SqlCommand command = new SqlCommand(query, connection))
+            {
+                using (SqlDataReader reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (reader["COLUMN_NAME"] != DBNull.Value)
+                        {
+                            identityColumns.Add(reader["COLUMN_NAME"].ToString());
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _LogService.WriteToLog($"GetIdentityColums Error: {ex.GetBaseException()}");
+        }
+        finally
+        {
+            if (connection.State == ConnectionState.Open)
+            {
+                connection.Close();
+            }
+        }
+
+        return identityColumns;
+    }
+    #endregion
+
+    #region public System.Type GetColumnType(string paramType)
+    public System.Type GetColumnType(string paramType)
+    {
+        Type ReturnType = typeof(string);
+
+        if (paramType.Contains("int"))
+        {
+            return typeof(int);
+        }
+
+        if (paramType.StartsWith("time"))
+        {
+            return typeof(TimeSpan);
+        }
+
+        if (paramType.Contains("char"))
+        {
+            return typeof(string);
+        }
+
+        if (paramType.Contains("date"))
+        {
+            return typeof(DateTime);
+        }
+
+        return ReturnType;
+    }
+    #endregion
+
+    #region static string StripTableSchemaAndBrackets(string input)
+    static string StripTableSchemaAndBrackets(string input)
+    {
+        // Remove the square brackets
+        input = input.Replace("[", "").Replace("]", "");
+
+        // Find the position of the dot
+        int dotIndex = input.IndexOf('.');
+
+        // Extract the substring after the dot
+        if (dotIndex >= 0 && dotIndex < input.Length - 1)
+        {
+            input = input.Substring(dotIndex + 1);
+        }
+
+        return input;
+    }
+    #endregion
+
+    #region private object GetCellValue(object columnValue, string columnType)
+    private object GetCellValue(object columnValue, string columnType)
+    {
+        try
+        {
+            if (columnType.Contains("int"))
+            {
+                if (columnValue == DBNull.Value)
+                {
+                    return DBNull.Value;
+                }
+                else
+                {
+                    return Convert.ToInt32(columnValue);
+                }
+            }
+
+            if (columnType.Contains("char"))
+            {
+                if (columnValue == DBNull.Value)
+                {
+                    return DBNull.Value;
+                }
+                else
+                {
+                    return columnValue.ToString();
+                }
+            }
+
+            if (columnType.StartsWith("time"))
+            {
+                if (columnValue == DBNull.Value)
+                {
+                    return DBNull.Value;
+                }
+                else
+                {
+                    return TimeSpan.Parse(columnValue.ToString());
+                }
+            }
+
+            if (columnType.Contains("date"))
+            {
+                if (columnValue == DBNull.Value)
+                {
+                    return DBNull.Value;
+                }
+                else
+                {
+                    return Convert.ToDateTime(columnValue);
+                }
+            }
+        }
+        catch
+        {
+            return columnValue;
+        }
+
+        return columnValue;
+    }
+    #endregion
+
+    #region private SqlDbType GetSQLParameterType(string columnType)
+    private SqlDbType GetSQLParameterType(string columnType)
+    {
+        SqlDbType sqlDbType = SqlDbType.NVarChar;
+
+        if (columnType.Contains("int"))
+        {
+            sqlDbType = SqlDbType.Int;
+        }
+
+        if (columnType.Contains("char"))
+        {
+            sqlDbType = SqlDbType.NVarChar;
+        }
+
+        if (columnType.Contains("time"))
+        {
+            sqlDbType = SqlDbType.Time;
+        }
+
+        if (columnType.Contains("date"))
+        {
+            sqlDbType = SqlDbType.DateTime;
+        }
+
+        return sqlDbType;
+    }
+    #endregion
+
+    // ********************************************************************************************************************
+    // Validators
+    // ********************************************************************************************************************
+
+    #region private class LengthValidator : IDataValidator
+    private class LengthValidator : IDataValidator
+    {
+        private readonly int _length;
+        public bool IsStrict { get; }
+        public string Message => $"Maximum length is {_length}";
+
+        public LengthValidator(int Length, bool isStrict)
+        {
+            IsStrict = isStrict;
+            _length = Length;
+        }
+
+        public bool IsValid(CellValue value)
+        {
+            try
+            {
+                var str = Convert.ToString(value.Data!);
+                return str.Length <= _length;
+            }
+            catch
+            {
+                return true;
+            }
+        }
+    }
+    #endregion
+}

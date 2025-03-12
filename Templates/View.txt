@@ -1,0 +1,34 @@
+namespace Controllers
+{
+    using System;
+    using System.Collections.Generic;
+    using System.IO;
+    using System.Linq;
+    using System.Threading.Tasks; 
+    using static PersonalDataWarehouse.MauiProgram;
+
+    **CLASS DEFINITION**    
+    public class **CLASS NAME**s 
+    {
+        public async Task<IEnumerable<IDictionary<string, object>>> Get()
+        {
+            string CurrentScript = "";
+
+            // Load the DataTable
+            var viewsFolder = Path.Combine("Data", "Views");
+            var fileName = Path.Combine(viewsFolder, $"**CLASS NAME**.view");
+
+            if (System.IO.File.Exists(fileName))
+            {
+                // Read contents into CurrentScript
+                CurrentScript = await System.IO.File.ReadAllTextAsync(fileName);
+            }
+
+            Dataloader objDataloader = new Dataloader();
+
+            var result = await objDataloader.RunDynamicCode(CurrentScript);
+
+            return result;
+        }
+    }
+}

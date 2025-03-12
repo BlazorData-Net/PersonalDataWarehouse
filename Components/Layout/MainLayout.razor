@@ -1,0 +1,116 @@
+﻿@using PersonalDataWarehouse.Model
+@using PersonalDataWarehouse.Models
+@inherits LayoutComponentBase
+@inject AppMetadata _AppMetadata
+@inject LogService _LogService
+<HeadContent>
+    <RadzenTheme Theme="default" />
+</HeadContent>
+<div class="page">
+    <main>
+        <div>
+            <ul role="menubar" style="width: 100%;">
+                <li role="menuitem">
+                    <a href="/" style="color: black;">Home</a>
+                </li>
+                <li role="menuitem">
+                    <a href="tables" style="color: black;">Tables</a>
+                </li>
+                <li role="menuitem">
+                    <a href="views" style="color: black;">Views</a>
+                </li>
+                <li role="menuitem">
+                    <a href="kqlpage" style="color: black;">Kusto</a>
+                </li>
+                <li role="menuitem">
+                    <a href="reports" style="color: black;">Reports</a>
+                </li>
+                <li role="menuitem">
+                    <a href="clouddatapage" style="color: black;">Cloud Data</a>
+                </li>
+                <li role="menuitem">
+                    <a href="settingspage" style="color: black;">Settings</a>
+                </li>
+                <li role="menuitem">
+                    <a href="about" style="color: black;">About</a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="top-row px-4">
+            @if (UpdateAvailable)
+            {
+                <a href="https://apps.microsoft.com" target="_blank">* Update Available *</a>
+            }
+            &nbsp;
+            <a href="https://BlazorData.net/" target="_blank">BlazorData.net</a>&nbsp;(@versionLocal)
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+<RadzenComponents />
+@code {
+    bool UpdateAvailable = false;
+    private string versionLocal = "";
+    private string versionPublished = "";
+    private string year = DateTime.Now.Year.ToString();
+
+    protected override void OnInitialized()
+    {
+        versionLocal = _AppMetadata.Version;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Call the API at https://BlazorData.net/api/version/GetVersion
+            // to get the version
+
+            var client = new HttpClient();
+            var response = await client.GetAsync("https://BlazorData.net/api/version/GetVersion");
+            response.EnsureSuccessStatusCode();
+            var result = await response.Content.ReadAsStringAsync();
+            versionPublished = result;
+
+            // Use the version number from the API if it is greater than the local version
+            if (ConvertToInteger(versionPublished) > ConvertToInteger(versionLocal))
+            {
+                UpdateAvailable = true;
+            }
+
+            _LogService.WriteToLog($"Application Started ({versionLocal})");
+        }
+        catch (Exception ex)
+        {
+            _LogService.WriteToLog(ex.Message);
+        }
+    }
+
+    #region private int ConvertToInteger(string strParamVersion)
+    private int ConvertToInteger(string strParamVersion)
+    {
+        int intVersionNumber = 0;
+        string strVersion = strParamVersion;
+
+        // Split into parts seperated by periods
+        char[] splitchar = { '.' };
+        var strSegments = strVersion.Split(splitchar);
+
+        // Process the segments
+        int i = 0;
+        List<int> colMultiplyers = new List<int> { 10000, 100, 1 };
+        foreach (var strSegment in strSegments)
+        {
+            int intSegmentNumber = Convert.ToInt32(strSegment);
+            intVersionNumber = intVersionNumber + (intSegmentNumber * colMultiplyers[i]);
+            i++;
+        }
+
+        return intVersionNumber;
+    }
+    #endregion
+}

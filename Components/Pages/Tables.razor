@@ -1,0 +1,1328 @@
+﻿@page "/tables"
+@using System.Data
+@using BlazorDatasheet
+@using BlazorDatasheet.Menu
+@using BlazorDatasheet.Core.Data
+@using BlazorDatasheet.Core.Formats
+@using CsvHelper
+@using ExcelDataReader
+@using Microsoft.Data.SqlClient
+@using Parquet;
+@using Parquet.Schema
+@using PersonalDataWarehouse.Services
+@using System.Text
+@using System.Reflection
+@using System.Globalization
+@using PersonalDataWarehouse.Components.Pages.ConnectionDialogs
+@using PersonalDataWarehouse.Model
+@using PersonalDataWarehouse.Models
+@using System.Text.RegularExpressions
+@using static PersonalDataWarehouse.Services.SettingsService
+@inject DataService DataService
+@inject SettingsService SettingsService
+@inject DatabaseService databaseService
+@inject LogService _LogService
+
+<PageTitle>Tables</PageTitle>
+
+<h4>Tables</h4>
+<br />
+<div>
+    @if (TableList.Count > 0)
+    {
+        <br />
+        <label>Select Table: </label>
+        <select @onchange="@(async (args) =>
+                    {
+                        CurrentTableName = args.Value?.ToString();
+                        CurrentDropdownTableName = args.Value?.ToString();
+                    })">
+            @foreach (var table in TableList)
+            {
+                <option value="@table"
+                        selected="@(table == CurrentTableName ? "selected" : null)">
+                    @table
+                </option>
+            }
+        </select>
+        <span>&nbsp;</span>
+        <button @onclick="LoadTableDataButton">Load</button>
+    }
+</div>
+<br />
+@if (IsLoadingSheet)
+{
+    <br />
+    <div role="progressbar" class="marquee"></div>
+}
+else
+{
+    <div>
+        <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+            <button @onclick="ImportData" title="New" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">note_add</i>
+            </button>
+            <button @onclick="Save" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">save</i>
+            </button>
+            <button @onclick="() => sheet.Commands.Undo()" title="Undo" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">undo</i>
+            </button>
+            <button @onclick="() => sheet.Commands.Redo()" title="Redo" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">redo</i>
+            </button>
+            <button @onclick="InsertRowAfterSelection" title="Insert Row" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">add</i>
+            </button>
+            <button @onclick="RemoveRow" title="Delete Row" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">remove</i>
+            </button>
+            <button @onclick="Export" title="Export" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">file_download</i>
+            </button>
+            <button @onclick="DeleteConfirmation" title="Delete" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">delete</i>
+            </button>
+        </div>
+    </div>
+    <div style="@(GridVisibility())">
+        <Datasheet Sheet="@sheet" MenuOptions=_sheetMenuOpt />
+    </div>
+    @if(isDontShowDataSheet)
+    {
+        <div style="text-align:center;">
+            <h4>Table display was cancelled.</h4>
+        </div>
+    }
+}
+
+<!-- POPUPS -->
+@if (ShowConnectionDialog)
+{
+    <DatabaseConnectionDialog ConnectionType="@ConnectionType"
+                              DatabaseName="@DatabaseName"
+                              DatabasePassword="@DatabasePassword"
+                              DatabaseUsername="@DatabaseUsername"
+                              ServerName="@ServerName"
+                              Close="CloseShowConnectionDialog"
+                              IntegratedSecurityDisplay="@IntegratedSecurityDisplay"
+                              ConfigurationType="ConfigurationType.DatabaseFull"
+                              OnSetConnection="SetDatabaseConnection" />
+}
+
+@if (IsSaveTablePopupVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">New Table</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseSaveTablePopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <form @onsubmit="SaveParquetAsync">
+                            <div>
+                                <label>Select Database: </label>
+                                <select @onchange="@(async (args) =>
+                                {
+                                    CurrentDatabaseName = args.Value?.ToString();
+                                })">
+                                    @foreach (var database in colAllDatabases)
+                                    {
+                                        <option value="@database"
+                                                selected="@(database == CurrentDatabaseName ? "selected" : null)">
+                                            @database
+                                        </option>
+                                    }
+                                </select>
+                            </div>
+                            <br />
+                            <div>
+                                <label for="tableName">Table Name:</label>
+                                <input type="text" id="tableName" maxlength="50" style="width: 300px;" @bind="CurrentTableNameWithoutDatabase" />
+                                &nbsp;&nbsp;&nbsp;&nbsp;
+                                <button type="submit">Submit</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (IsExportVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Export</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseExportPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+
+                        <div role="progressbar" class="marquee" style="width: 100%; display: @(IsLoadingSheet ? "block" : "none");"></div>
+
+                        <div style="display: @(IsLoadingSheet ? "none" : "block");">
+                            <span>&nbsp; &nbsp;</span>
+                            <button @onclick="ExportExcel">Excel</button>
+                            <span>&nbsp; &nbsp;</span>
+                            <button @onclick="ExportParquet">Parquet</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (ShowImportData)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Import</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseImportPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+
+                        <div role="progressbar" class="marquee" style="width: 100%; display: @(IsLoadingSheet ? "block" : "none");"></div>
+
+                        <div style="display: @(IsLoadingSheet ? "none" : "block");">
+                            <div style="display: flex; align-items: center; flex-wrap: nowrap;">
+                                <button @onclick="OpenShowConnectionDialog">
+                                    Import Data
+                                </button>
+                                <span style="margin: 0 10px;">Or</span>
+                                <InputFile @key="resetInputFileFlag"
+                                           OnChange="HandleFileSelectedAsync"
+                                           accept=".csv,.xls,.xlsx,.parquet" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (Message != "")
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Alert!</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseMessagePopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <div class="has-scrollbar" style="width: 100%; height: 100px; overflow: auto">
+                            @Message
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (ShowDeleteConfirmation)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Confirm Delete</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseDeleteConfirmationPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="Delete">Yes</button>
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="CloseDeleteConfirmationPopup">No</button>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (ShowLoadDataConfirmation)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Load All Data</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseShowLoadDataConfirmationPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+                        <p>This table has <span>@CurrentDataTable.Rows.Count</span> rows. Do you want to display it in the datagrid?</p>
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="LoadTableDataIntoBlazorDataGrid">Yes</button>
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="CloseShowLoadDataConfirmationPopup">No</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private Sheet sheet;
+
+    private DataSet dataSet;
+    private IBrowserFile CurrentFile;
+
+    List<string> TableList = new List<string>();
+    Dictionary<string, string> TableColumns = new Dictionary<string, string>();
+    List<string> colGeneralErrors = new List<string>();
+    List<string> colAllDatabases = new List<string>();
+    DataTable CurrentDataTable = new DataTable();
+    string CurrentDatabaseName = "Default";
+    string CurrentTableName = string.Empty;
+    string CurrentFileName = string.Empty;
+    string CurrentTableNameWithoutDatabase = string.Empty;
+    string CurrentDropdownTableName = string.Empty;
+
+    string Message = "";
+
+    bool resetInputFileFlag = false;
+    bool IsShowFileUpload = true;
+    bool IsLoadingSheet = false;
+    bool IsSaveTablePopupVisible = false;
+    bool IsExportVisible = false;
+    bool ShowImportData = false;
+
+    bool ShowLoadDataConfirmation = false;
+
+    bool ShowDeleteConfirmation = false;
+    bool ShowConnectionDialog { get; set; } = false;
+    bool isLoading { get; set; } = false;
+    bool isReadyForImport { get; set; } = false;
+    bool LoadedDataIsUnsaved { get; set; } = false;
+
+    private ConnectionType ConnectionType = ConnectionType.SQLServer;
+    private string ServerName = "";
+    private string DatabaseName = "";
+    private string DatabasePassword = "";
+    private string DatabaseUsername = "";
+    private string IntegratedSecurityDisplay = "False";
+
+    private bool isDontShowDataSheet = false;
+    string UploadVisibility => IsShowFileUpload ? "display:block;" : "display:none;";
+
+    SheetMenuOptions _sheetMenuOpt = new SheetMenuOptions()
+        {
+            InsertColsEnabled = false,
+            HideColsEnabled = false,
+            HideRowsEnabled = false,
+            DeleteColsEnabled = false,
+            MergeEnabled = false,
+            SortRangeEnabled = false,
+            FilterColumnEnabled = true,
+            HeaderMenuEnabled = false,
+            AlignmentEnabled = false,
+            ClearEnabled = false
+        };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ResetPage();
+
+        SettingsService.LoadSettings();
+    }
+
+    // Events
+
+    private string GridVisibility()
+    {
+        if(sheet != null)
+        {
+            return sheet.NumRows > 0 ? "display:block;" : "display:none;";
+        }
+        else
+        {
+            return "display:none;";
+        }
+    }
+
+    private async Task ResetPage()
+    {
+        // Toggle the flag to force a re-render of InputFile
+        resetInputFileFlag = !resetInputFileFlag;
+
+        ShowImportData = false;
+        CurrentTableName = string.Empty;
+        CurrentFileName = string.Empty;
+        IsShowFileUpload = true;
+        IsLoadingSheet = false;
+        IsSaveTablePopupVisible = false;
+        LoadedDataIsUnsaved = false;
+        Message = "";
+
+        // Initialize the sheet
+        sheet = new Sheet(0, 0);
+        CurrentDataTable = new DataTable();
+
+        colAllDatabases = await databaseService.GetAllDatabasesAsync();
+
+        await LoadTableListDropdownAsync();
+
+        // If TableList has items, set the first table
+        if (TableList.Count > 0)
+        {
+            CurrentTableName = TableList[0];
+            CurrentDropdownTableName = TableList[0];
+        }
+    }
+
+    private async Task HandleFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        if (e.File == null)
+        {
+            return;
+        }
+
+        CurrentTableName = string.Empty;
+        CurrentFile = e.File;
+        CurrentFileName = CurrentFile.Name;
+
+        IsShowFileUpload = false;
+        IsLoadingSheet = true;
+        ShowImportData = false;
+
+        // Increase the max allowed size to a value larger than your file size
+        using var fileStream = CurrentFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024); // 50 MB
+
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+
+        using var memoryStream = new MemoryStream();
+        await fileStream.CopyToAsync(memoryStream);
+        memoryStream.Position = 0;
+
+        // If the file is an Excel file, load the data into a DataTable
+        if (CurrentFileName.EndsWith(".xls") || CurrentFileName.EndsWith(".xlsx"))
+        {
+            using var reader = ExcelReaderFactory.CreateReader(memoryStream);
+            var result = reader.AsDataSet(new ExcelDataSetConfiguration()
+                {
+                    ConfigureDataTable = _ => new ExcelDataTableConfiguration()
+                    {
+                        UseHeaderRow = true
+                    }
+                });
+
+            dataSet = result;
+        }
+
+        // If the file is a Parquet file, load the data into a DataTable
+        if (CurrentFileName.EndsWith(".parquet"))
+        {
+            var Table = await ParquetReader.ReadTableFromStreamAsync(memoryStream);
+
+            dataSet = await DataService.ConvertParquetTableToDataSetAsync(Table, CurrentFileName);
+        }
+
+        // If the file is a CSV file, load the data into a DataTable
+        if (CurrentFileName.EndsWith(".csv"))
+        {
+            using var reader = new StreamReader(memoryStream);
+            using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
+            {
+                // Do any configuration to `CsvReader` before creating CsvDataReader.
+                using (var dr = new CsvDataReader(csv))
+                {
+                    dataSet = new DataSet();
+                    dataSet.Tables.Add("Sheet1");
+                    dataSet.Tables[0].Load(dr);
+                }
+            }
+        }
+
+        // Load dataSet into DataTable
+        if (dataSet != null && dataSet.Tables.Count > 0)
+        {
+            CurrentDataTable = dataSet.Tables[0];
+            await LoadTableData();
+        }
+
+        // Toggle the flag to force a re-render of InputFile
+        resetInputFileFlag = !resetInputFileFlag;
+        CurrentTableName = string.Empty;
+        CurrentFileName = string.Empty;
+        CurrentFile = null;
+        IsLoadingSheet = false;
+        LoadedDataIsUnsaved = true;
+        StateHasChanged();
+    }
+
+    // Table Dropdown
+
+    private async Task LoadTableListDropdownAsync()
+    {
+        TableList = new List<string>();
+        TableList = await databaseService.GetAllTablesAsync();
+    }
+
+    private async Task LoadTableDataButton()
+    {
+        await LoadTableData(CurrentDropdownTableName);
+    }
+
+    private async Task LoadTableData(string paramTable)
+    {
+        IsLoadingSheet = true;
+        StateHasChanged();
+
+        // Seperate the table name from the database
+        var (Database, Table) = DataService.ExtractDatabaseAndTable(paramTable);
+
+        // Set CurrentDatabaseName
+        CurrentDatabaseName = Database;
+
+        // Load the DataTable
+        String ParentFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases";
+
+        var fileName = Path.Combine(ParentFolder, Database, $"Parquet/{Table}.parquet");
+
+        if (System.IO.File.Exists(fileName))
+        {
+            CurrentDataTable = await DataService.ReadParquetFileAsync(fileName);
+            await LoadTableData();
+        }
+        else
+        {
+            Message = "Table not found.";
+        }
+
+        IsLoadingSheet = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadTableData()
+    {
+        // If CurrentDataTable has more than 100,000 rows, show a message
+        if (CurrentDataTable.Rows.Count > 100000)
+        {
+            ShowLoadDataConfirmation = true;
+        }
+        else
+        {
+            await LoadTableDataIntoBlazorDataGrid();
+        }
+    }
+
+    private async Task LoadTableDataIntoBlazorDataGrid()
+    {
+        isDontShowDataSheet = false;
+        ShowLoadDataConfirmation = false;
+        StateHasChanged();
+
+        Message = "";
+
+        // Get a list of the columns from the DataTable
+        TableColumns = CurrentDataTable.Columns
+        .Cast<DataColumn>()
+        .ToDictionary(
+            column => column.ColumnName,
+            column => column.DataType.Name
+        );
+
+        // Create sheet with the number of columns
+        sheet = new Sheet(CurrentDataTable.Rows.Count, TableColumns.Count);
+
+        // Wait 1 second before loading the table data
+        // to join the UI thread
+        await Task.Delay(1000);
+
+        // Turn off history
+        sheet.BatchUpdates();
+        sheet.Commands.PauseHistory();
+
+        int i = 0;
+        foreach (string objDatabaseColumn in TableColumns.Keys)
+        {
+            sheet.Columns.SetHeadings(i, i, objDatabaseColumn);
+            i++;
+        }
+
+        int ii = 0;
+        foreach (DataRow dataRow in CurrentDataTable.Rows)
+        {
+            i = 0;
+            foreach (var objDatabaseColumn in TableColumns)
+            {
+                // Set the value of the cell
+                sheet.Cells[ii, i].Value = dataRow[i].ToString();
+                sheet.Cells[ii, i].Format = new CellFormat() { IsReadOnly = false };
+                sheet.Cells[ii, i].Type = objDatabaseColumn.Value;
+                i++;
+            }
+
+            ii++;
+        }
+
+        // Turn on history
+        sheet.EndBatchUpdates();
+        sheet.Commands.ResumeHistory();
+    }
+
+    #region Datasheet Events
+    private void InsertRowAfterSelection()
+    {
+        if (sheet.Selection.ActiveRegion == null)
+        {
+            return;
+        }
+
+        sheet.Rows.InsertAt(sheet.Selection.ActiveRegion.TopLeft.row);
+    }
+
+    private void RemoveRow()
+    {
+        if (sheet.Selection.ActiveRegion == null)
+        {
+            return;
+        }
+
+        sheet.Rows.RemoveAt(sheet.Selection.ActiveRegion.Top);
+    }
+    #endregion
+
+    // Import Data
+
+    private void ImportData()
+    {
+        ShowImportData = true;
+    }
+
+    private void CloseImportPopup()
+    {
+        ShowImportData = false;
+    }
+
+    // Save
+
+    private void Save()
+    {
+        if (CurrentTableName.Trim().Length == 0)
+        {
+            CurrentTableNameWithoutDatabase = "";
+        }
+        else
+        {
+            // Strip out Database from CurrentTableName and set to CurrentTableNameWithoutDatabase
+            var (Database, Table) = DataService.ExtractDatabaseAndTable(CurrentTableName);
+            CurrentTableNameWithoutDatabase = Table;
+        }
+
+        // Open the New Table popup
+        IsSaveTablePopupVisible = true;
+    }
+
+    private async Task SaveParquetAsync()
+    {
+        if (CurrentTableNameWithoutDatabase.Trim().Length == 0)
+        {
+            Message = "Table Name is required.";
+            return;
+        }
+
+        // Remove spaces and special characters
+        string CleanedName = databaseService.RemoveSpacesSpecialCharacters(CurrentTableNameWithoutDatabase);
+
+        if (CleanedName != CurrentTableNameWithoutDatabase)
+        {
+            CurrentTableNameWithoutDatabase = CleanedName;
+            Message = $"Table Name will be {CurrentTableNameWithoutDatabase}";
+            return;
+        }
+
+        // Check for duplicates
+        if (DetectDuplicates(CurrentDatabaseName, CurrentTableNameWithoutDatabase))
+        {
+            Message = "A View or Report with this name already exists.";
+            return;
+        }
+
+        // Add the database name to the table name
+        CurrentTableNameWithoutDatabase = $"{CurrentDatabaseName}/{CurrentTableNameWithoutDatabase}";
+
+        IsLoadingSheet = true;
+        StateHasChanged();
+
+        // Convert sheet to datatable
+        ConvertSheetToDataTable();
+
+        // Set the CurrentTableName
+        CurrentTableName = CurrentTableNameWithoutDatabase;
+
+        // Convert to Parquet
+        DataService objDataService = new DataService();
+        await objDataService.WriteDataTableToParquetAsync(CurrentDataTable, CurrentTableName);
+
+        // Create C# class from DataTable
+        GenerateClassFromDataTable(CurrentDataTable, CurrentTableName);
+
+        // Set the CurrentDropdownTableName
+        CurrentDropdownTableName = CurrentTableName;
+
+        // Re-Load the TableList dropdown
+        await LoadTableListDropdownAsync();
+
+        // Toggle the flag to force a re-render of InputFile
+        // Clearing it if needed
+        resetInputFileFlag = !resetInputFileFlag;
+
+        IsLoadingSheet = false;
+        IsSaveTablePopupVisible = false;
+        LoadedDataIsUnsaved = false;
+        IsShowFileUpload = true;
+        StateHasChanged();
+
+        Message = $"{CurrentTableName} saved successfully.";
+    }
+
+    // Delete
+
+    private async Task Delete()
+    {
+        ShowDeleteConfirmation = false;
+
+        if (CurrentTableName.Trim().Length == 0)
+        {
+            Message = "Must save table first.";
+        }
+        else
+        {
+            // Delete the Parquet file
+            IsLoadingSheet = true;
+            StateHasChanged();
+
+            // Seperate the table name from the database
+            var (Database, Table) = DataService.ExtractDatabaseAndTable(CurrentTableName);
+
+            // Delete the Parquet file
+            String parquetFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Parquet";
+            var fileName = Path.Combine(parquetFolder, $"{Table}.parquet");
+            if (System.IO.File.Exists(fileName))
+            {
+                System.IO.File.Delete(fileName);
+            }
+
+            // Delete the C# class file
+            String ClassesFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Classes";
+            fileName = Path.Combine(ClassesFolder, $"{Table}.cs");
+            if (System.IO.File.Exists(fileName))
+            {
+                System.IO.File.Delete(fileName);
+            }
+
+            // Delete the XSD file
+            String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports/Data";
+            fileName = Path.Combine(ReportsFolder, $"{Table}Schemas.xsd");
+            if (System.IO.File.Exists(fileName))
+            {
+                System.IO.File.Delete(fileName);
+            }
+
+            string deletedTableName = CurrentTableName;
+            CurrentTableName = string.Empty;
+
+            Message = $"{deletedTableName} deleted!";
+
+            await ResetPage();
+        }
+    }
+
+    // Popups
+
+    private void CloseSaveTablePopup()
+    {
+        IsSaveTablePopupVisible = false;
+    }
+
+    private void CloseMessagePopup()
+    {
+        Message = "";
+    }
+
+    private void DeleteConfirmation()
+    {
+        ShowDeleteConfirmation = true;
+    }
+
+    private void CloseDeleteConfirmationPopup()
+    {
+        ShowDeleteConfirmation = false;
+    }
+
+    private void CloseShowLoadDataConfirmationPopup()
+    {
+        sheet = new Sheet(0, 0);
+        isDontShowDataSheet = true;
+        ShowLoadDataConfirmation = false;
+    }
+
+    // Datasheet Operations
+
+    #region private void ConvertSheetToDataTable
+    private void ConvertSheetToDataTable()
+    {
+        // If the sheet is empty, return
+        // This will happen when the user decides not to load the table in the grid
+        // because it has too many rows
+        // In this case, the DataTable will stay the one that was loaded
+        if (sheet.NumRows == 0)
+        {
+            return;
+        }
+
+        colGeneralErrors = new List<string>();
+        CurrentDataTable = new DataTable();
+
+        foreach (var column in TableColumns)
+        {
+            string columnName = column.Key;
+            Type columnType = GetColumnType(column.Value);
+
+            CurrentDataTable.Columns.Add(new DataColumn(columnName, columnType));
+        }
+
+        for (int i = 0; i < sheet.NumRows; i++)
+        {
+            DataRow row = CurrentDataTable.NewRow();
+
+            for (int j = 0; j < TableColumns.Count; j++)
+            {
+                try
+                {
+                    var cellValue = sheet.Cells[i, j]?.Value;
+
+                    if (cellValue == null
+                        || cellValue == DBNull.Value
+                        || string.IsNullOrWhiteSpace(cellValue.ToString()))
+                    {
+                        row[j] = DBNull.Value;
+                    }
+                    else
+                    {
+                        var columnType = CurrentDataTable.Columns[j].DataType;
+
+                        if (columnType == typeof(int))
+                        {
+                            row[j] = Convert.ToInt32(cellValue);
+                        }
+                        else if (columnType == typeof(DateTime))
+                        {
+                            row[j] = Convert.ToDateTime(cellValue);
+                        }
+                        else if (columnType == typeof(TimeSpan))
+                        {
+                            string stringValue = cellValue.ToString();
+
+                            if (DateTime.TryParse(stringValue, out var parsedDateTime))
+                            {
+                                row[j] = parsedDateTime.TimeOfDay;
+                            }
+                            else if (TimeSpan.TryParse(stringValue, out var parsedTimeSpan))
+                            {
+                                row[j] = parsedTimeSpan;
+                            }
+                            else
+                            {
+                                row[j] = stringValue;
+                            }
+                        }
+                        else
+                        {
+                            string cleanValue = cellValue.ToString()
+                                .Replace("\r\n", " ")
+                                .Replace("\t", " ")
+                                .Replace("\r", " ")
+                                .Replace("\n", " ")
+                                .Trim();
+
+                            row[j] = cleanValue;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    colGeneralErrors.Add(ex.GetBaseException().Message);
+                }
+            }
+
+            CurrentDataTable.Rows.Add(row);
+        }
+    }
+    #endregion
+
+    #region public static void GenerateClassFromDataTable(DataTable dt, string className)
+    public static void GenerateClassFromDataTable(DataTable dt, string className)
+    {
+        // Seperate the table name from the database
+        DataService dataService = new DataService();
+        var (Database, Table) = dataService.ExtractDatabaseAndTable(className);
+
+        // ** Build the class definition and dictionary mapping
+
+        // Build the class definition
+        StringBuilder ClassDefinition = new StringBuilder();
+        ClassDefinition.AppendLine($"public class {DataService.FirstCharToUpper(Table)}");
+        ClassDefinition.AppendLine("    {");
+
+        // Add an Id property to the class
+        ClassDefinition.AppendLine("        public int Id { get; set; }");
+
+        // For each column in the DataTable, create a string property
+        foreach (DataColumn column in dt.Columns)
+        {
+            // Ensure the property name is a valid C# identifier
+            string propertyName = column.ColumnName.Replace(" ", "_");
+
+            ClassDefinition.AppendLine
+            ($"        public string {propertyName} {{ get; set; }}");
+        }
+
+        ClassDefinition.AppendLine("    }");
+
+        // Build the dictionaryMapping
+        StringBuilder DictionaryMapping = new StringBuilder();
+
+        foreach (DataColumn column in dt.Columns)
+        {
+            // Replace spaces in the column name with underscores to make it a valid C# identifier
+            string propertyName = column.ColumnName.Replace(" ", "_");
+
+            // Build the line:
+            DictionaryMapping.AppendLine(
+                $"                        {propertyName} = dict.ContainsKey(\"{propertyName}\") "
+                + "? dict[\"{propertyName}\"]?.ToString() : null,");
+        }
+
+        // ** Open the Class.txt template from Templates\Class.txt and replace the content with the codeBuilder
+        string templatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Templates", "class.txt");
+
+        // Read the content of the template file
+        string templateContent = File.ReadAllText(templatePath);
+
+        // Replace the placeholders
+        string codeBuilder = "";
+
+        codeBuilder = templateContent.Replace("**CLASS NAME**", DataService.FirstCharToUpper(Table));
+        codeBuilder = codeBuilder.Replace("**CLASS DEFINITION**", ClassDefinition.ToString());
+        codeBuilder = codeBuilder.Replace("**DICTIONARY MAPPING**", DictionaryMapping.ToString());
+        codeBuilder = codeBuilder.Replace("**CLASS UPPERCASE WITH AN S**", (DataService.FirstCharToUpper(Table) + "s"));
+        codeBuilder = codeBuilder.Replace("**CLASS LOWERCASE WITH AN S**", (Table.ToLower() + "s"));
+        codeBuilder = codeBuilder.Replace("**FIRST FIELD**", dt.Columns[0].ColumnName);
+        codeBuilder = codeBuilder.Replace("**DATABASE NAME**", Database);
+        codeBuilder = codeBuilder.Replace("**FILE NAME**", Table);
+
+        // ** Write the class to a file
+
+        // Define directory for output
+        String ClassesPath = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Classes";
+
+        // Set the file path
+        string filePath = Path.Combine(ClassesPath, Table + ".cs");
+
+        // Write the class to file
+        File.WriteAllText(filePath, codeBuilder.ToString());
+
+        // **********************
+        // ** Create the xsd file
+        // **********************
+
+        // Load the class and generate the schema
+        // Load the class by using its name and get its type
+
+        // Load the class using the contents in codeBuilder.ToString() and get its type
+        var ClassType = XsdGenerator.GetTypeFromCode(codeBuilder.ToString(), DataService.FirstCharToUpper(Table));
+
+        // Step 1: Generate the schema string
+        string schemaString = XsdGenerator.GenerateSchemaForType(ClassType);
+
+        // Step 2: Save the file
+        String ReportsDataPath = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports/Data";
+
+        filePath = Path.Combine(ReportsDataPath, $"{Table}Schemas.xsd");
+        File.WriteAllText(filePath, schemaString);
+    }
+    #endregion
+
+    // Export
+
+    private void Export()
+    {
+        if (CurrentTableName.Trim().Length == 0)
+        {
+            // Open the Save Table popup
+            IsSaveTablePopupVisible = true;
+        }
+        else
+        {
+            IsExportVisible = true;
+        }
+    }
+
+    private void CloseExportPopup()
+    {
+        IsExportVisible = false;
+    }
+
+    private async Task ExportExcel()
+    {
+        IsLoadingSheet = true;
+
+        // Seperate the table name from the database
+        DataService dataService = new DataService();
+        var (Database, Table) = dataService.ExtractDatabaseAndTable(CurrentTableName);
+
+        // Export the DataTable to Excel
+        byte[] ExcelContents = await DataService.ExportDataTableToExcelAsync(CurrentDataTable, Table);
+
+        // Read DocumentContents into a MemoryStream
+        var stream = new MemoryStream(ExcelContents);
+
+        var FileName = $"{Table}.xlsx";
+
+        var picker = new Windows.Storage.Pickers.FileSavePicker
+            {
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads
+            };
+
+        picker.FileTypeChoices.Add("All Files", new List<string> { ".xlsx" });
+        picker.SuggestedFileName = FileName;
+
+        var hwnd = ((MauiWinUIWindow)App.Current.Windows[0].Handler.PlatformView).WindowHandle;
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        var fileSaverResult = await picker.PickSaveFileAsync();
+
+        if (fileSaverResult != null)
+        {
+            // Convert the MemoryStream to a byte array
+            byte[] fileContent = stream.ToArray();
+
+            // Write the content to the selected path
+            await File.WriteAllBytesAsync(fileSaverResult.Path, fileContent);
+        }
+        else
+        {
+            Message = $"Export to Excel cancelled.";
+        }
+
+        IsLoadingSheet = false;
+        IsExportVisible = false;
+    }
+
+    private async Task ExportParquet()
+    {
+        IsLoadingSheet = true;
+
+        // Seperate the table name from the database
+        DataService dataService = new DataService();
+        var (Database, Table) = dataService.ExtractDatabaseAndTable(CurrentTableName);
+
+        // Export the DataTable to Parquet
+        byte[] ParquetContents = await DataService.ExportDataTableToParquetAsync(CurrentDataTable, Table);
+
+        // Read DocumentContents into a MemoryStream
+        var stream = new MemoryStream(ParquetContents);
+
+        var FileName = $"{Table}.parquet";
+
+        var picker = new Windows.Storage.Pickers.FileSavePicker
+            {
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads
+            };
+
+        picker.FileTypeChoices.Add("All Files", new List<string> { ".parquet" });
+        picker.SuggestedFileName = FileName;
+
+        var hwnd = ((MauiWinUIWindow)App.Current.Windows[0].Handler.PlatformView).WindowHandle;
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        var fileSaverResult = await picker.PickSaveFileAsync();
+
+        if (fileSaverResult != null)
+        {
+            // Convert the MemoryStream to a byte array
+            byte[] fileContent = stream.ToArray();
+
+            // Write the content to the selected path
+            await File.WriteAllBytesAsync(fileSaverResult.Path, fileContent);
+        }
+        else
+        {
+            Message = $"Export to Parquet cancelled.";
+        }
+
+        IsLoadingSheet = false;
+        StateHasChanged();
+
+        IsLoadingSheet = false;
+        IsExportVisible = false;
+    }
+
+    // ********************************************************************************************************************
+    // Database Connection
+    // ********************************************************************************************************************
+
+    #region private void OpenShowConnectionDialog()
+    private void OpenShowConnectionDialog()
+    {
+        ShowImportData = false;
+        ShowConnectionDialog = true;
+    }
+    #endregion
+
+    #region private void CloseShowConnectionDialog()
+    private void CloseShowConnectionDialog()
+    {
+        ShowConnectionDialog = false;
+    }
+    #endregion
+
+    #region private async Task SetDatabaseConnection(DatabaseImport objDatabaseImport)
+    private async Task SetDatabaseConnection(DatabaseImport objDatabaseImport)
+    {
+        // Update the connection settings
+        ConnectionType = objDatabaseImport.ConnectionSetting.ConnectionType;
+        ServerName = objDatabaseImport.ConnectionSetting.ServerName;
+        DatabaseName = objDatabaseImport.ConnectionSetting.DatabaseName;
+        DatabasePassword = objDatabaseImport.ConnectionSetting.Password;
+        DatabaseUsername = objDatabaseImport.ConnectionSetting.Username;
+        IntegratedSecurityDisplay = (objDatabaseImport.ConnectionSetting.IntegratedSecurity) ? "True" : "False";
+
+        ShowConnectionDialog = false;
+        IsShowFileUpload = false;
+        IsLoadingSheet = true;
+        StateHasChanged();
+
+        if ((objDatabaseImport.SQLQuery != null) && (objDatabaseImport.SQLQuery != ""))
+        {
+            // Load SQL Query
+
+            using (SqlConnection connection = new SqlConnection(objDatabaseImport.ConnectionSetting.ConnectionString))
+            {
+                connection.Open();
+
+                SqlDataAdapter adapter = new SqlDataAdapter(objDatabaseImport.SQLQuery, connection);
+                CurrentDataTable = new DataTable();
+                adapter.Fill(CurrentDataTable);
+
+                connection.Close();
+            }
+        }
+        else
+        {
+            // Load Table
+
+            using (SqlConnection connection = new SqlConnection(objDatabaseImport.ConnectionSetting.ConnectionString))
+            {
+                connection.Open();
+
+                // Get the computed columns for the table
+                List<string> ComputedColumns = GetComputedColumns(connection, objDatabaseImport.TableName);
+
+                // Get a list of the column names
+                var TableColumns = new List<DTODatabaseColumn>();
+
+                DataTable Columns = connection.GetSchema("Columns");
+
+                foreach (DataRow row in Columns.Rows)
+                {
+                    if ($"[{row["TABLE_SCHEMA"].ToString()}].[{row["TABLE_NAME"].ToString()}]" == objDatabaseImport.TableName)
+                    {
+                        DTODatabaseColumn objTableColumns = new DTODatabaseColumn();
+
+                        objTableColumns.ColumnName = row["COLUMN_NAME"].ToString();
+                        objTableColumns.ColumnType = row["DATA_TYPE"].ToString();
+
+                        if (row["CHARACTER_MAXIMUM_LENGTH"] != DBNull.Value)
+                        {
+                            objTableColumns.ColumnLength = Convert.ToInt32(row["CHARACTER_MAXIMUM_LENGTH"]);
+                        }
+                        else
+                        {
+                            objTableColumns.ColumnLength = 0;
+                        }
+
+                        TableColumns.Add(objTableColumns);
+                    }
+                }
+
+                // Remove from TableColumns any colums types of unique identifiers
+                TableColumns = TableColumns.Where(x => x.ColumnType != "uniqueidentifier").ToList();
+
+                // Remove from TableColumns any colums types of hierarchyid
+                TableColumns = TableColumns.Where(x => x.ColumnType != "hierarchyid").ToList();
+
+                // Remove from TableColumns any colums types of varbinary
+                TableColumns = TableColumns.Where(x => x.ColumnType != "varbinary").ToList();
+
+                // Remove from TableColumns any colums types of geography
+                TableColumns = TableColumns.Where(x => x.ColumnType != "geography").ToList();
+
+                // Remove from TableColumns any colums types of computed
+                // remove colums conatined in the ComputedColumns list
+                TableColumns = TableColumns.Where(x => !ComputedColumns.Contains(x.ColumnName)).ToList();
+
+                // Get Table names from TableColumns as comma seperated values
+                string strTableNames = string.Join(",", TableColumns.Select(x => $"[{x.ColumnName}]").ToArray());
+
+                string sql = $"SELECT {strTableNames} FROM {objDatabaseImport.TableName}";
+
+                SqlDataAdapter adapter = new SqlDataAdapter(sql, connection);
+                CurrentDataTable = new DataTable();
+                adapter.Fill(CurrentDataTable);
+
+                connection.Close();
+            }
+        }
+
+        await LoadTableData();
+
+        CurrentTableName = String.Empty;
+        LoadedDataIsUnsaved = true;
+
+        IsLoadingSheet = false;
+        IsShowFileUpload = true;
+        StateHasChanged();
+    }
+    #endregion
+
+    // ********************************************************************************************************************
+    // Utility
+    // ********************************************************************************************************************
+
+    #region public List<string> GetComputedColumns(SqlConnection connection, string tableName)
+    public List<string> GetComputedColumns(SqlConnection connection, string tableName)
+    {
+        List<string> ComputedColumns = new List<string>();
+
+        try
+        {
+            string query = $@"
+                                SELECT name AS ColumnName
+                                FROM sys.columns
+                                WHERE object_id = OBJECT_ID('{tableName}') AND is_computed = 1";
+
+            using (SqlCommand command = new SqlCommand(query, connection))
+            {
+                using (SqlDataReader reader = command.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        if (reader["ColumnName"] != DBNull.Value)
+                        {
+                            ComputedColumns.Add(reader["ColumnName"].ToString());
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+
+        return ComputedColumns;
+    }
+    #endregion
+
+    #region public System.Type GetColumnType(string paramType)
+    public System.Type GetColumnType(string paramType)
+    {
+        Type ReturnType = typeof(string);
+
+        if (paramType.Contains("int"))
+        {
+            return typeof(int);
+        }
+
+        if (paramType.StartsWith("time"))
+        {
+            return typeof(TimeSpan);
+        }
+
+        if (paramType.Contains("char"))
+        {
+            return typeof(string);
+        }
+
+        if (paramType.Contains("date"))
+        {
+            return typeof(DateTime);
+        }
+
+        return ReturnType;
+    }
+    #endregion
+
+    // Duplicates
+
+    #region public static bool DetectDuplicates(string paramDatabaseName, string paramParquetName)
+    public static bool DetectDuplicates(string paramDatabaseName, string paramParquetName)
+    {
+        bool result = false;
+
+        // Check if the table name already exists
+        String folderPath = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{paramDatabaseName}/Views";
+
+        string fileName = $"{folderPath}/{paramParquetName}.view";
+        var ParquetExists = System.IO.File.Exists(fileName);
+
+        String ReportsFolderPath = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/{paramDatabaseName}/Reports";
+
+        fileName = $"{ReportsFolderPath}/{paramParquetName}.rdlc";
+        var ViewExists = System.IO.File.Exists(fileName);
+
+        if (ParquetExists || ViewExists)
+        {
+            result = true;
+        }
+
+        return result;
+    }
+    #endregion
+}

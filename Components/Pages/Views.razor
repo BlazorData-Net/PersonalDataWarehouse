@@ -1,0 +1,1313 @@
+﻿@page "/views"
+@using System.Text.Json
+@using System.Linq.Dynamic.Core
+@using CSScriptLib
+@using System.Reflection
+@using System.Text
+@using OpenAI;
+@using Microsoft.Extensions.AI;
+@using System.Diagnostics.CodeAnalysis
+@using PersonalDataWarehouse.AI
+@using PersonalDataWarehouse.Services
+@using PersonalDataWarehouse.Model
+@using MonacoRazor
+@using System.Data
+@inject DatabaseService databaseService
+@inject DataService DataService
+@inject SettingsService SettingsService
+@inject OrchestratorMethods OrchestratorMethods
+@inject LogService _LogService
+
+<PageTitle>Views</PageTitle>
+
+<h4>Views</h4>
+<br />
+@if (IsLoading)
+{
+    <div role="progressbar" class="marquee" style="width: 25%"></div>
+}
+else
+{
+    <div>
+        @if (ViewList.Count > 0)
+        {
+            @if (CurrentViewName != "")
+            {
+                <label>Select View: </label>
+                <select @onchange="@(async (args) =>
+                    {
+                        CurrentViewName = args.Value?.ToString();
+                        await LoadViewAsync(CurrentViewName);
+                    })">
+                    @foreach (var view in ViewList)
+                    {
+                        <option value="@view"
+                        selected="@(view == CurrentViewName ? "selected" : null)">
+                            @view
+                        </option>
+                    }
+                </select>
+            }
+            else
+            {
+                <button @onclick="Reset">Reset</button>
+            }
+        }
+    </div>
+    <br />
+    <div>
+        <div class="rz-p-sm-1" style="background-color:whitesmoke; border-block:thin; border-block-color:lightgray; text-align:left">
+            @if (TableList.Count > 0)
+            {
+                <button @onclick="OpenWizard" title="Table Wizard" style="background:none;border:none;">
+                    <i class="material-icons" style="color:black;">flash_on</i>
+                </button>
+            }
+
+            <button @onclick="NewScript" title="New" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">note_add</i>
+            </button>
+
+            <button @onclick="SaveViewName" title="Save" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">save</i>
+            </button>
+
+            <button disabled="@(CanUndo == false)" @onclick="() => Undo()" title="Undo" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">undo</i>
+            </button>
+
+            <button disabled="@(CanRedo == false)" @onclick="() => Redo()" title="Redo" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">redo</i>
+            </button>
+
+            @if (!string.IsNullOrEmpty(CurrentViewName))
+            {
+                <button @onclick="DeleteConfirmation" title="Delete" style="background:none;border:none;">
+                    <i class="material-icons" style="color:black;">delete</i>
+                </button>
+            }
+
+            <button @onclick="Execute" title="Execute" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">play_arrow</i>
+            </button>
+
+            <button @onclick="Export" title="Export" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">file_download</i>
+            </button>
+
+            <button @onclick="OpenAIPopup" title="AI" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">psychology</i>
+            </button>
+            @if (ContentChanged)
+            {
+                <span style="color:red">&nbsp;&nbsp;<b>Editing...</b></span>
+            }
+        </div>
+        <CodeEditor @ref="@MonacoCodeEditor"
+                    Language="csharp"
+                    Code="@CurrentScript"
+                    MinHeight="500px"
+                    Width="90%"
+                    Margin="0px"
+                    OnCompletionsRequested="GetCompletionsAsync" />
+    </div>
+    <br />
+}
+
+<!-- POPUPS -->
+@if (IsNewOutputPopupVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog" style="max-width: 90%; margin-top: 5%;">
+            <div class="modal-content">
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Output</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseOutputTablePopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        @if (IsOutputLoading)
+                        {
+                            <div role="progressbar" class="marquee" style="width: 100%"></div>
+                        }
+                        else
+                        {
+                            <RadzenDataGrid Data="@objDataParameters.data"
+                                            ColumnWidth="200px"
+                                            AllowFiltering="false" AllowPaging="true" AllowSorting="false">
+                                <Columns>
+                                    @foreach (var column in objDataParameters.columns)
+                                    {
+                                        <RadzenDataGridColumn @key=@column.Key
+                                                              Title="@column.Key"
+                                                              Type="column.Value"
+                                                              Property="@PropertyAccess.GetDynamicPropertyExpression(column.Key, column.Value)">
+                                            <Template>
+                                                @context[@column.Key]
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                    }
+                                </Columns>
+                            </RadzenDataGrid>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@if (IsWizardVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Table Wizard</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseTableWizardPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <label>Select Table: </label>
+                        <select @onchange="@(async (args) =>
+                            {
+                                CurrentSelectedTableWizard = args.Value?.ToString();
+                            })">
+                            @foreach (var table in TableList)
+                            {
+                                <option value="@table">
+                                    @table
+                                </option>
+                            }
+                        </select>
+                        &nbsp;&nbsp;
+                        <button @onclick="onTableWizardAsync">Select</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@if (IsSaveViewPopupVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Save View</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseNewViewPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <form @onsubmit="SaveViewAsync">
+                            <div>
+                                <label>Select Database: </label>
+                                <select @onchange="@(async (args) =>
+                                {
+                                    CurrentDatabaseName = args.Value?.ToString();
+                                })">
+                                    @foreach (var database in colAllDatabases)
+                                    {
+                                        <option value="@database"
+                                                selected="@(database == CurrentDatabaseName ? "selected" : null)">
+                                            @database
+                                        </option>
+                                    }
+                                </select>
+                            </div>
+                            <br />
+                            <div>
+                                <label for="tableName">View Name:</label>
+                                <input type="text" id="tableName" maxlength="50" style="width: 300px;" @bind="CurrentViewNameWithoutDatabase" />
+                                &nbsp;&nbsp;&nbsp;&nbsp;
+                                <button type="submit">Submit</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@if (ShowAI)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">AI Prompt</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseAIPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+                        @if (IsAILoading)
+                        {
+                            <div role="progressbar" class="marquee" style="width: 100%"></div>
+                        }
+                        else
+                        {
+                            <div class="has-scrollbar" style="width: 100%; height: 110px; overflow: auto">
+                                <textarea @bind="AIMessage" maxlength="1000"
+                                          style="width: 100%; height: 100px; overflow: auto; resize: vertical;">
+                                                </textarea>
+                            </div>
+                            <br />
+                            <button @onclick="AIbtn">Submit</button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (ShowDeleteConfirmation)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Confirm Delete</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseDeleteConfirmationPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="DeleteAsync">Yes</button>
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="CloseDeleteConfirmationPopup">No</button>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (IsExportVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Export</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseExportPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+
+                        <div role="progressbar" class="marquee" style="width: 100%; display: @(IsLoadingSheet ? "block" : "none");"></div>
+
+                        <div style="display: @(IsLoadingSheet ? "none" : "block");">
+                            <span>&nbsp; &nbsp;</span>
+                            <button @onclick="ExportExcel">Excel</button>
+                            <span>&nbsp; &nbsp;</span>
+                            <button @onclick="ExportParquet">Parquet</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (Message != "")
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Alert!</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseMessagePopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <div class="has-scrollbar" style="width: 100%; height: 100px; overflow: auto">
+                            @Message
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private CodeEditor MonacoCodeEditor { get; set; }
+    private bool ContentChanged { get; set; }
+    private string CurrentScript { get; set; } = string.Empty;
+
+    private DataParameters objDataParameters = new DataParameters();
+
+    private bool IsLoading { get; set; } = false;
+    private bool IsAILoading { get; set; } = false;
+    private bool IsOutputLoading { get; set; } = false;
+    private List<string> TableList = new List<string>();
+    private List<string> ViewList = new List<string>();
+    private string DataSchema = "";
+    private string CurrentViewName = "";
+    private string CurrentViewNameWithoutDatabase = string.Empty;
+
+    List<Suggestion> suggestions = new List<Suggestion>();
+    List<string> colAllDatabases = new List<string>();
+    string CurrentDatabaseName = "Default";
+
+    private Stack<string> undoStack = new();
+    private Stack<string> redoStack = new();
+    private bool CanUndo => undoStack.Count > 0;
+    private bool CanRedo => redoStack.Count > 0;
+
+    private bool IsWizardVisible { get; set; } = false;
+    private bool IsSaveViewPopupVisible { get; set; } = false;
+    private bool IsNewOutputPopupVisible { get; set; } = false;
+    private bool IsExportVisible { get; set; } = false;
+    private bool IsLoadingSheet { get; set; } = false;
+    private string CurrentSelectedTableWizard = "";
+
+    private bool ShowDeleteConfirmation { get; set; } = false;
+
+    private bool ShowAI { get; set; } = false;
+    private string AIMessage = "";
+
+    string Message = "";
+
+    protected override void OnInitialized()
+    {
+        objDataParameters = new DataParameters();
+        objDataParameters.data = new List<IDictionary<string, object>>();
+        objDataParameters.columns = new Dictionary<string, Type>();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        DataSchema = await databaseService.GetAllTableSchemaAsync();
+        suggestions = await databaseService.GetAllTableCompletionsAsync();
+        await LoadViewsListDropdownAsync();
+        colAllDatabases = await databaseService.GetAllDatabasesAsync();
+        await LoadTableListDropdownAsync();
+
+        if (ViewList.Count > 0)
+        {
+            CurrentViewName = ViewList.First();
+
+            // Separate the view name from the database
+            var (Database, View) = DataService.ExtractDatabaseAndTable(CurrentViewName);
+
+            // Load the DataTable
+            String viewsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Views";
+
+            var fileName = $"{viewsFolder}/{View}.view";
+
+            if (System.IO.File.Exists(fileName))
+            {
+                // Read contents into CurrentScript
+                CurrentScript = System.IO.File.ReadAllText(fileName);
+                StateHasChanged();
+            }
+        }
+        else
+        {
+            CurrentScript = SampleCode;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            if (ViewList.Count > 0)
+            {
+                CurrentViewName = ViewList.First();
+                await LoadViewAsync(CurrentViewName);
+            }
+        }
+    }
+
+    Task<Suggestion[]> GetCompletionsAsync(string currentValue, Position position)
+    {
+        // Search suggestions
+        var result = suggestions.Where(x => x.Label.StartsWith(currentValue, StringComparison.OrdinalIgnoreCase)).ToArray();
+
+        return Task.FromResult(result);
+    }
+
+    // Undo/Redo
+
+    // Called when the user clicks the Undo button.
+    private async Task Undo()
+    {
+        if (CanUndo)
+        {
+            // Get the current script
+            CurrentScript = await MonacoCodeEditor.GetCodeAsync();
+
+            // Push the current text onto the redo stack.
+            redoStack.Push(CurrentScript);
+
+            // Pop the last state from the undo stack and set it as the current text.
+            CurrentScript = undoStack.Pop();
+
+            await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
+        }
+    }
+
+    // Called when the user clicks the Redo button.
+    private async Task Redo()
+    {
+        if (CanRedo)
+        {
+            // Get the current script
+            CurrentScript = await MonacoCodeEditor.GetCodeAsync();
+
+            // Push the current state onto the undo stack.
+            undoStack.Push(CurrentScript);
+
+            // Pop the last undone state from the redo stack and set it as the current text.
+            CurrentScript = redoStack.Pop();
+
+            await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
+        }
+    }
+
+    // SAVE
+
+    private void SaveViewName()
+    {
+        if (CurrentViewName != "")
+        {
+            // Separate the view name from the database
+            var (Database, View) = DataService.ExtractDatabaseAndTable(CurrentViewName);
+
+            CurrentViewNameWithoutDatabase = View;
+        }
+        else
+        {
+            CurrentViewNameWithoutDatabase = "";
+        }
+
+        IsSaveViewPopupVisible = true;
+    }
+
+    // This method is called when a save does not request a view name
+    private async Task SaveViewAsync()
+    {
+        try
+        {
+            CurrentViewNameWithoutDatabase = CurrentViewNameWithoutDatabase.Trim();
+
+            if (string.IsNullOrEmpty(CurrentViewNameWithoutDatabase))
+            {
+                Message = "Please enter a view name.";
+                return;
+            }
+
+            IsLoading = true;
+
+            // Remove spaces and special characters
+            string CleanedName = databaseService.RemoveSpacesSpecialCharacters(CurrentViewNameWithoutDatabase);
+
+            if (CleanedName != CurrentViewNameWithoutDatabase)
+            {
+                IsLoading = false;
+                CurrentViewNameWithoutDatabase = CleanedName;
+                Message = $"View Name will be {CurrentViewNameWithoutDatabase}";
+                return;
+            }
+
+            // Check for duplicates
+            if (DetectDuplicates(CurrentDatabaseName, CurrentViewNameWithoutDatabase))
+            {
+                IsLoading = false;
+                Message = "A Table or Report with this name already exists.";
+                return;
+            }
+
+            // Save to file in Data/Views
+            String viewsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{CurrentDatabaseName}/Views";
+
+            var fileName = Path.Combine(viewsFolder, $"{CurrentViewNameWithoutDatabase}.view");
+
+            // Get the current script
+            CurrentScript = await MonacoCodeEditor.GetCodeAsync();
+
+            // Update the Undo stack
+            undoStack.Push(CurrentScript);
+
+            await System.IO.File.WriteAllTextAsync(fileName, CurrentScript);
+
+            // Execute the code (because we need to get the columns returned)
+            var objResult = await RunDynamicCode(CurrentScript);
+
+            List<string> columns = new List<string>();
+
+            if (objResult != null)
+            {
+                // Parse objDataParametersResult.data to a list of dictionaries
+                // Only get the first row to get the columns
+                var TempColumns = objResult.Select(x => x.ToDictionary(y => y.Key, y => y.Value)).FirstOrDefault();
+
+                columns = TempColumns.Keys.ToList();
+            }
+
+            // ** Build the class definition and dictionary mapping
+
+            // Build the class definition
+            StringBuilder ClassDefinition = new StringBuilder();
+            ClassDefinition.AppendLine($"public class {DataService.FirstCharToUpper(CurrentViewNameWithoutDatabase)}");
+            ClassDefinition.AppendLine("    {");
+
+            // Add an Id property to the class
+            ClassDefinition.AppendLine("        public int Id { get; set; }");
+
+            // For each column in the DataTable, create a string property
+            foreach (var column in columns)
+            {
+                // Ensure the property name is a valid C# identifier
+                string propertyName = column.Replace(" ", "_");
+
+                ClassDefinition.AppendLine
+                ($"        public string {propertyName} {{ get; set; }}");
+            }
+
+            ClassDefinition.AppendLine("    }");
+
+            // Build the dictionaryMapping
+            StringBuilder DictionaryMapping = new StringBuilder();
+
+            foreach (var column in columns)
+            {
+                // Replace spaces in the column name with underscores to make it a valid C# identifier
+                string propertyName = column.Replace(" ", "_");
+
+                // Build the line:
+                DictionaryMapping.AppendLine(
+                    $"                        {propertyName} = dict.ContainsKey(\"{propertyName}\") "
+                    + "? dict[\"{propertyName}\"]?.ToString() : null,");
+            }
+
+            // ** Open the View.txt template from Templates\View.txt and replace the content with the codeBuilder
+            string templatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Templates", "View.txt");
+
+            // Read the content of the template file
+            string templateContent = File.ReadAllText(templatePath);
+
+            // Replace the placeholders
+            string codeBuilder = "";
+
+            codeBuilder = templateContent.Replace("**CLASS NAME**", DataService.FirstCharToUpper(CurrentViewNameWithoutDatabase));
+            codeBuilder = codeBuilder.Replace("**CLASS DEFINITION**", ClassDefinition.ToString());
+            codeBuilder = codeBuilder.Replace("**DICTIONARY MAPPING**", DictionaryMapping.ToString());
+            codeBuilder = codeBuilder.Replace("**CLASS UPPERCASE WITH AN S**", (DataService.FirstCharToUpper(CurrentViewNameWithoutDatabase) + "s"));
+            codeBuilder = codeBuilder.Replace("**CLASS LOWERCASE WITH AN S**", (CurrentViewNameWithoutDatabase.ToLower() + "s"));
+            codeBuilder = codeBuilder.Replace("**FIRST FIELD**", columns[0]);
+
+            // ** Write the class to a file
+
+            // Define directory for output
+            String ClassesPath = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{CurrentDatabaseName}/Classes";
+
+            // Set the file path
+            string filePath = $@"{ClassesPath}/{CurrentViewNameWithoutDatabase}.cs";
+
+            // Write the class to file
+            File.WriteAllText(filePath, codeBuilder.ToString());
+
+            // **********************
+            // ** Create the xsd file
+            // **********************
+
+            // Load the class and generate the schema
+            // Load the class by using its name and get its type
+            var codeFile = Path.Combine(ClassesPath, $"{CurrentViewNameWithoutDatabase}.cs");
+
+            if (!System.IO.File.Exists(codeFile))
+            {
+                Message = $"{codeFile} Code file not found.";
+                return;
+            }
+
+            // Load the code from the file
+            var code = System.IO.File.ReadAllText(codeFile);
+
+            // Get the Type for the class we want to generate the RDL for
+            var ClassType = XsdGenerator.GetTypeFromCode(code, DataService.FirstCharToUpper(CurrentViewNameWithoutDatabase));
+
+            // Step 1: Generate the schema string
+            string schemaString = XsdGenerator.GenerateSchemaForType(ClassType);
+
+            // Step 3: Save the file
+            string DataPath = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{CurrentDatabaseName}/Reports/Data";
+            filePath = Path.Combine(DataPath, $"{CurrentViewNameWithoutDatabase}Schemas.xsd");
+            File.WriteAllText(filePath, schemaString);
+
+            CurrentViewName = $"{CurrentDatabaseName}/{CurrentViewNameWithoutDatabase}";
+
+            IsLoading = false;
+
+            IsSaveViewPopupVisible = false;
+
+            if (ContentChanged)
+            {
+                Message = $"{CurrentViewNameWithoutDatabase} saved!";
+            }
+
+            ContentChanged = false;
+
+            await LoadViewsListDropdownAsync();
+        }
+        catch (Exception ex)
+        {
+            IsLoading = false;
+            IsSaveViewPopupVisible = false;
+            Message = ex.GetBaseException().Message;
+            await _LogService.WriteToLogAsync(Message);
+        }
+    }
+
+    // Table Dropdown
+
+    private async Task LoadTableListDropdownAsync()
+    {
+        TableList = new List<string>();
+        TableList = await databaseService.GetAllTablesAsync();
+    }
+
+    // Views Dropdown
+
+    private async Task LoadViewsListDropdownAsync()
+    {
+        ViewList = new List<string>();
+        ViewList = await databaseService.GetAllViewsAsync();
+    }
+
+    private async Task LoadViewAsync(string paramView)
+    {
+        // Separate the view name from the database
+        var (Database, View) = DataService.ExtractDatabaseAndTable(paramView);
+
+        // Load the DataTable
+        String viewsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Views";
+
+        var fileName = $"{viewsFolder}/{View}.view";
+
+        if (System.IO.File.Exists(fileName))
+        {
+            // Read contents into CurrentScript
+            CurrentScript = System.IO.File.ReadAllText(fileName);
+
+            await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
+
+            // Update the Undo/Redo stacks
+            undoStack.Clear();
+            redoStack.Clear();
+            undoStack.Push(CurrentScript);
+
+            // Set CurrentViewName
+            CurrentViewName = paramView;
+        }
+        else
+        {
+            Message = "View not found.";
+        }
+    }
+
+    // Delete
+
+    private async Task DeleteAsync()
+    {
+        if (CurrentViewName.Trim().Length == 0)
+        {
+            Message = "Must save view first.";
+        }
+        else
+        {
+            // Separate the view name from the database
+            var (Database, View) = DataService.ExtractDatabaseAndTable(CurrentViewName);
+
+            // Delete the file
+            String viewsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Views";
+
+            var fileName = Path.Combine(viewsFolder, $"{View}.view");
+            if (System.IO.File.Exists(fileName))
+            {
+                System.IO.File.Delete(fileName);
+            }
+
+            // Delete the C# class file
+            String ClassesFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Classes";
+
+            fileName = Path.Combine(ClassesFolder, $"{View}.cs");
+            if (System.IO.File.Exists(fileName))
+            {
+                System.IO.File.Delete(fileName);
+            }
+
+            // Delete the XSD file
+            String ReportsDataFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports/Data";
+
+            fileName = Path.Combine(ReportsDataFolder, $"{View}Schemas.xsd");
+            if (System.IO.File.Exists(fileName))
+            {
+                System.IO.File.Delete(fileName);
+            }
+
+            string deletedViewName = View;
+            CurrentViewName = string.Empty;
+
+            Message = $"{deletedViewName} deleted!";
+
+            ShowDeleteConfirmation = false;
+
+            await LoadViewsListDropdownAsync();
+
+            if (ViewList.Count > 0)
+            {
+                CurrentViewName = ViewList.First();
+                await LoadViewAsync(CurrentViewName);
+            }
+            else
+            {
+                CurrentScript = SampleCode;
+                await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
+            }
+        }
+    }
+
+    // New Script
+
+    private async Task NewScript()
+    {
+        // Save the current script
+        CurrentScript = await MonacoCodeEditor.GetCodeAsync();
+
+        if (CurrentScript != "")
+        {
+            // Update the Undo/Redo stacks
+            undoStack.Push(CurrentScript);
+        }
+
+        CurrentScript = SampleCode;
+        CurrentViewName = "";
+
+        await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
+    }
+
+    // Table Wizard
+
+    private async Task onTableWizardAsync()
+    {
+        // Save the current script
+        CurrentScript = await MonacoCodeEditor.GetCodeAsync();
+
+        if (CurrentScript != "")
+        {
+            // Update the Undo/Redo stacks
+            undoStack.Push(CurrentScript);
+        }
+
+        if (string.IsNullOrEmpty(CurrentSelectedTableWizard))
+        {
+            Message = "Please select a table.";
+            return;
+        }
+
+        // Separate the view name from the database
+        var (DatabaseName, TableName) = DataService.ExtractDatabaseAndTable(CurrentSelectedTableWizard);
+
+        CurrentScript = $"using System;\n";
+        CurrentScript += $"using System.Collections.Generic;\n";
+        CurrentScript += $"using System.Linq;\n";
+        CurrentScript += $"using System.Threading.Tasks;\n";
+        CurrentScript += $"\n";
+        CurrentScript += $"public async Task<IEnumerable<IDictionary<string, object>>> ReturnResult()\n";
+        CurrentScript += "{\n";
+        CurrentScript += $"    // Create a Dataloader \n";
+        CurrentScript += $"    Dataloader objDataloader = new Dataloader();\n";
+        CurrentScript += $"    // Call LoadParquet to load {TableName} into col{TableName} \n";
+        CurrentScript += $@"    var col{TableName} = await objDataloader.LoadParquet(""{DatabaseName}"",""{TableName}"");";
+        CurrentScript += $"\n";
+        CurrentScript += $"    // Return the results ToDictionary()  \n";
+        CurrentScript += $"    return col{TableName}.Select(row => row.ToDictionary()).Take(100).ToList();";
+        CurrentScript += "\n";
+        CurrentScript += "}\n";
+
+        CloseTableWizardPopup();
+
+        CurrentSelectedTableWizard = "";
+
+        await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
+    }
+
+    // Popups
+
+    private void OpenWizard()
+    {
+        CurrentSelectedTableWizard = TableList.FirstOrDefault();
+        CurrentViewName = ""; // So the new View name popup will show on Save
+        IsWizardVisible = true;
+    }
+
+    private void CloseNewViewPopup()
+    {
+        IsSaveViewPopupVisible = false;
+    }
+
+    private void CloseOutputTablePopup()
+    {
+        IsNewOutputPopupVisible = false;
+    }
+
+    private void CloseTableWizardPopup()
+    {
+        IsWizardVisible = false;
+    }
+
+    private void CloseMessagePopup()
+    {
+        Message = "";
+    }
+
+    private void DeleteConfirmation()
+    {
+        ShowDeleteConfirmation = true;
+    }
+
+    private void CloseDeleteConfirmationPopup()
+    {
+        ShowDeleteConfirmation = false;
+    }
+
+    private void CloseExportPopup()
+    {
+        IsExportVisible = false;
+    }
+
+    private async Task Reset()
+    {
+        CurrentScript = SampleCode;
+        await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
+        CurrentViewName = ViewList.First();
+        await LoadViewAsync(CurrentViewName);
+    }
+
+    // Duplicates
+
+    #region public static bool DetectDuplicates(string paramDatabaseName, string paramViewName)
+    public static bool DetectDuplicates(string paramDatabaseName, string paramViewName)
+    {
+        bool result = false;
+
+        // Check if the table name already exists
+        String folderPath = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{paramDatabaseName}/Parquet";
+
+        string fileName = $"{folderPath}/{paramViewName}.parquet";
+        var ParquetExists = System.IO.File.Exists(fileName);
+
+        String ReportsFolderPath = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/{paramDatabaseName}/Reports";
+
+        fileName = $"{ReportsFolderPath}/{paramViewName}.rdlc";
+        var ViewExists = System.IO.File.Exists(fileName);
+
+        if (ParquetExists || ViewExists)
+        {
+            result = true;
+        }
+
+        return result;
+    }
+    #endregion
+
+    // Code Execution
+
+    #region RunCode
+    private async Task Execute()
+    {
+        try
+        {
+            if (CurrentViewName == "")
+            {
+                // Open a popup to enter the view name
+                IsSaveViewPopupVisible = true;
+                return;
+            }
+
+            // Separate the view name from the database
+            var (Database, View) = DataService.ExtractDatabaseAndTable(CurrentViewName);
+
+            CurrentViewNameWithoutDatabase = View;
+
+            // Get the current script
+            CurrentScript = await MonacoCodeEditor.GetCodeAsync();
+
+            //  Save the view
+            await SaveViewAsync();
+
+            IsOutputLoading = true;
+            IsNewOutputPopupVisible = true;
+            StateHasChanged();
+
+            // Execute the code
+            var objResult = await RunDynamicCode(CurrentScript);
+
+            if (objResult != null)
+            {
+                // Parse objDataParametersResult.data to a list of dictionaries
+                var columns = objResult.Select(x => x.ToDictionary(y => y.Key, y => y.Value)).FirstOrDefault();
+
+                objDataParameters = new DataParameters
+                    {
+                        data = objResult,
+                        columns = columns.ToDictionary(x => x.Key, x => Type.GetType("System.String"))
+                    };
+            }
+
+            // If there is a message, display it
+            // Otherwise, display the data
+            if (Message != "")
+            {
+                IsNewOutputPopupVisible = false;
+            }
+            else
+            {
+                IsNewOutputPopupVisible = true;
+            }
+
+            IsOutputLoading = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            IsNewOutputPopupVisible = false;
+            IsOutputLoading = false;
+            Message = ex.GetBaseException().Message;
+            await _LogService.WriteToLogAsync(Message);
+            StateHasChanged();
+        }
+    }
+
+    public async Task<IEnumerable<IDictionary<string, object>>> RunDynamicCode(string paramCode)
+    {
+        try
+        {
+            dynamic script = CSScript.Evaluator.LoadMethod(paramCode);
+
+            var result = await script.ReturnResult();
+
+            return result as IEnumerable<IDictionary<string, object>>;
+        }
+        catch (Exception ex)
+        {
+            Message = ex.GetBaseException().Message;
+            await _LogService.WriteToLogAsync(Message);
+            return null;
+        }
+    }
+    #endregion
+
+    // Exports
+
+    private void Export()
+    {
+        if (CurrentViewName.Trim().Length == 0)
+        {
+            // Open the Save Table popup
+            SaveViewName();
+        }
+        else
+        {
+            IsExportVisible = true;
+
+            // Separate the view name from the database
+            var (Database, View) = DataService.ExtractDatabaseAndTable(CurrentViewName);
+
+            CurrentViewNameWithoutDatabase = View;
+        }
+    }
+
+    private async Task ExportExcel()
+    {
+        // Note: CurrentViewNameWithoutDatabase was set in the Export method
+
+        IsLoadingSheet = true;
+
+        // Get the current script
+        CurrentScript = await MonacoCodeEditor.GetCodeAsync();
+
+        //  Save the view
+        await SaveViewAsync();
+
+        // Execute the code
+        var objResult = await RunDynamicCode(CurrentScript);
+
+        if (objResult == null)
+        {
+            Message = "No data to export.";
+            IsLoadingSheet = false;
+            IsExportVisible = false;
+            return;
+        }
+        // Parse objDataParametersResult.data to a list of dictionaries
+        var columns = objResult.Select(x => x.ToDictionary(y => y.Key, y => y.Value)).FirstOrDefault();
+
+        objDataParameters = new DataParameters
+            {
+                data = objResult,
+                columns = columns.ToDictionary(x => x.Key, x => Type.GetType("System.String"))
+            };
+
+        // Turn data into a DataTable
+        DataTable dt = DataService.ConvertToDataTable(objDataParameters.data, objDataParameters.columns);
+
+        // Export the DataTable to Excel
+        byte[] ExcelContents = await DataService.ExportDataTableToExcelAsync(dt, CurrentViewNameWithoutDatabase);
+
+        // Read DocumentContents into a MemoryStream
+        var stream = new MemoryStream(ExcelContents);
+
+        var FileName = $"{CurrentViewNameWithoutDatabase}.xlsx";
+
+        var picker = new Windows.Storage.Pickers.FileSavePicker
+            {
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads
+            };
+
+        picker.FileTypeChoices.Add("All Files", new List<string> { ".xlsx" });
+        picker.SuggestedFileName = FileName;
+
+        var hwnd = ((MauiWinUIWindow)App.Current.Windows[0].Handler.PlatformView).WindowHandle;
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        var fileSaverResult = await picker.PickSaveFileAsync();
+
+        if (fileSaverResult != null)
+        {
+            // Convert the MemoryStream to a byte array
+            byte[] fileContent = stream.ToArray();
+
+            // Write the content to the selected path
+            await File.WriteAllBytesAsync(fileSaverResult.Path, fileContent);
+        }
+        else
+        {
+            Message = $"Export to Excel cancelled.";
+        }
+
+        IsLoadingSheet = false;
+        IsExportVisible = false;
+    }
+
+    private async Task ExportParquet()
+    {
+        // Note: CurrentViewNameWithoutDatabase was set in the Export method
+
+        IsLoadingSheet = true;
+
+        // Get the current script
+        CurrentScript = await MonacoCodeEditor.GetCodeAsync();
+
+        //  Save the view
+        await SaveViewAsync();
+
+        // Execute the code
+        var objResult = await RunDynamicCode(CurrentScript);
+
+        if (objResult == null)
+        {
+            Message = "No data to export.";
+            IsLoadingSheet = false;
+            IsExportVisible = false;
+            return;
+        }
+        // Parse objDataParametersResult.data to a list of dictionaries
+        var columns = objResult.Select(x => x.ToDictionary(y => y.Key, y => y.Value)).FirstOrDefault();
+
+        objDataParameters = new DataParameters
+            {
+                data = objResult,
+                columns = columns.ToDictionary(x => x.Key, x => Type.GetType("System.String"))
+            };
+
+        // Turn data into a DataTable
+        DataTable dt = DataService.ConvertToDataTable(objDataParameters.data, objDataParameters.columns);
+
+        // Export the DataTable to Parquet
+        byte[] ParquetContents = await DataService.ExportDataTableToParquetAsync(dt, CurrentViewNameWithoutDatabase);
+
+        // Read DocumentContents into a MemoryStream
+        var stream = new MemoryStream(ParquetContents);
+
+        var FileName = $"{CurrentViewNameWithoutDatabase}.parquet";
+
+        var picker = new Windows.Storage.Pickers.FileSavePicker
+            {
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads
+            };
+
+        picker.FileTypeChoices.Add("All Files", new List<string> { ".parquet" });
+        picker.SuggestedFileName = FileName;
+
+        var hwnd = ((MauiWinUIWindow)App.Current.Windows[0].Handler.PlatformView).WindowHandle;
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        var fileSaverResult = await picker.PickSaveFileAsync();
+
+        if (fileSaverResult != null)
+        {
+            // Convert the MemoryStream to a byte array
+            byte[] fileContent = stream.ToArray();
+
+            // Write the content to the selected path
+            await File.WriteAllBytesAsync(fileSaverResult.Path, fileContent);
+        }
+        else
+        {
+            Message = $"Export to Parquet cancelled.";
+        }
+
+        IsLoadingSheet = false;
+        StateHasChanged();
+
+        IsLoadingSheet = false;
+        IsExportVisible = false;
+    }
+
+    // AI
+
+    #region AI
+    private async Task AIbtn()
+    {
+        try
+        {
+            // Determine if AI is set-up
+
+            // Get APIKey from secure settings
+            string ApiKey = await SecureStorage.Default.GetAsync("AIApiKey") ?? "";
+
+            if (string.IsNullOrEmpty(ApiKey))
+            {
+                if ((SettingsService.Settings.ApplicationSettings.AIType == "OpenAI") || (SettingsService.Settings.ApplicationSettings.AIType == "Azure OpenAI"))
+                {
+                    Message = "Please set up AI in Setings";
+                    return;
+                }
+            }
+
+            if ((SettingsService.Settings.ApplicationSettings.AIType == "LM Studio") || (SettingsService.Settings.ApplicationSettings.AIType == "Ollma"))
+            {
+                if ((SettingsService.Settings.ApplicationSettings.Endpoint.Trim() == ""))
+                {
+                    Message = "Please set up AI in Setings";
+                    return;
+                }
+            }
+
+            // Get the current script
+            CurrentScript = await MonacoCodeEditor.GetCodeAsync();
+
+            if (CurrentScript != "")
+            {
+                // Update the Undo/Redo stacks
+                undoStack.Push(CurrentScript);
+            }
+
+            IsAILoading = true;
+            StateHasChanged();
+
+            // ** Open the View.txt template from Templates\View.txt and replace the content with the codeBuilder
+            string templatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Templates", "AITemplate.txt");
+
+            // Read the content of the template file
+            string templateContent = File.ReadAllText(templatePath);
+
+            // Replace the placeholders
+            string AIRequest = "";
+
+            AIRequest = templateContent.Replace("## CURRENT SCHEMA ##", DataSchema);
+            AIRequest = AIRequest.Replace("## CURRENT CODE ##", CurrentScript);
+            AIRequest = AIRequest.Replace("## CURRENT REQUEST ##", AIMessage);
+
+            var AIResponse = await OrchestratorMethods.CallOpenAIAsync(SettingsService, ApiKey, AIRequest);
+
+            IsAILoading = false;
+            ShowAI = false;
+
+            if (AIResponse.Error != "")
+            {
+                Message = AIResponse.Error;
+                return;
+            }
+
+            // Update the code in the editor
+            await MonacoCodeEditor.UpdateCodeAsync(AIResponse.Response);
+        }
+        catch (Exception ex)
+        {
+            Message = ex.GetBaseException().Message;
+            await _LogService.WriteToLogAsync(Message);
+        }
+    }
+
+    private void OpenAIPopup()
+    {
+        AIMessage = "";
+        ShowAI = true;
+    }
+
+    private void CloseAIPopup()
+    {
+        ShowAI = false;
+        Message = "";
+    }
+    #endregion
+
+    private string SampleCode = @"    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Threading.Tasks;
+
+    public async Task<IEnumerable<IDictionary<string, object>>> ReturnResult()
+    {
+        // Generate random data
+        return Enumerable.Range(1, 1).Select(id => new Dictionary<string, object>
+        {
+            { ""EmployeeId"", ""1234"" },
+            { ""FirstName"", ""John"" },
+            { ""LastName"", ""Doe"" }
+        });
+    }";
+}

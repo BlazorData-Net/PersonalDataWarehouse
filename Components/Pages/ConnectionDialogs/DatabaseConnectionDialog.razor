@@ -1,0 +1,849 @@
+﻿@using System.Text
+@using Microsoft.Data.SqlClient
+@using PersonalDataWarehouse.Model
+@using PersonalDataWarehouse.Models
+@using System.Data
+@using PersonalDataWarehouse.Services
+@using static PersonalDataWarehouse.Services.SettingsService
+@inject SettingsService SettingsService
+@inject Blazored.LocalStorage.ILocalStorageService localStorage
+@inject LogService _LogService
+
+<div class="modal fade show" style="display: block;" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+
+            <div class="window glass active">
+                <div class="title-bar">
+                    <div class="title-bar-text">Database Connection</div>
+                    <div class="title-bar-controls">
+                        <button aria-label="Close" @onclick="() => Close.InvokeAsync()"></button>
+                    </div>
+                </div>
+                <div class="window-body has-space" style="text-align: center;">
+                    @if (ConnectionMode == "DatabaseConnection")
+                    {
+                        <div class="tabs-container">
+                            <div class="tab-item active" onclick="showTab(this, 'database-tab')">Database</div>
+                            @if (ConfigurationType != ConfigurationType.DatabaseFull)
+                            {
+                                <div class="tab-item" onclick="showTab(this, 'azurestorage-tab')">Azure Storage</div>
+                            }
+                        </div>
+
+                        <div id="database-tab" class="tab-content active">
+                            <h5 style="color:red">@strStatusMessage</h5>
+                            <table class="form-group" cellpadding="4" cellspacing="4">
+                                <tbody>
+                                    @if (Connections.Count > 0)
+                                    {
+                                        <tr>
+                                            <td style="text-align: right">
+                                                <label for="ExistingConnection" class="control-label" style="font-weight: bold">Saved Connections: </label>
+                                            </td>
+                                            <td>
+                                                <select class="form-control" style="width: 220px;" @onchange="@(async (args) =>
+											{
+												ChooseConnection = args.Value?.ToString();
+												await LoadConnection(ChooseConnection);
+											})">
+                                                    @foreach (var option in Connections)
+                                                    {
+                                                        @if (option == ChooseConnection)
+                                                        {
+                                                            <option value="@option" selected>@ShortenServerName(@option, 10)</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="@option">@ShortenServerName(@option, 10)</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td>
+                                                <button type="button" aria-label="delete" @onclick="() => ShowDeleteConfirmation = true">
+                                                    <span class="material-icons" style="font-size: 20px; color: #000;">delete</span>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td></td>
+                                            <td colspan="2">
+                                                <hr />
+                                            </td>
+                                        </tr>
+                                    }
+                                    <tr>
+                                        <td style="text-align: right">
+                                            <label for="ServerName" class="control-label" style="font-weight: bold">Server: </label>
+                                        </td>
+                                        <td colspan="2">
+                                            <input type="text" id="ServerName" class="form-control" @bind="ServerName" />
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="text-align: right">
+                                            <label for="DatabaseName" class="control-label" style="font-weight: bold">Database: </label>
+                                        </td>
+                                        <td colspan="2">
+                                            <input type="text" id="DatabaseName" class="form-control" @bind="DatabaseName" />
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        @if (ConnectionType == ConnectionType.SQLServer)
+                                        {
+                                            <td style="text-align: right">
+                                                <label for="IntegratedSecurity" class="control-label" style="font-weight: bold">Integrated Security: </label>
+                                            </td>
+                                            <td colspan="2">
+                                                <select @bind="IntegratedSecurityDisplay" @bind:event="onchange" class="form-control" style="width: 300px;">
+                                                    @foreach (var option in OptionsTrueFalse)
+                                                    {
+                                                        @if (option == IntegratedSecurityDisplay)
+                                                        {
+                                                            <option value="@option" selected>@option</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="@option">@option</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </td>
+                                        }
+                                    </tr>
+                                    <tr>
+                                        <td style="text-align: right">
+                                            <label for="ConnectionType" class="control-label" style="font-weight: bold">Connection Type: </label>
+                                        </td>
+                                        <td colspan="2">
+                                            <select @bind="ConnectionType" @bind:event="onchange" class="form-control" style="width: 300px;">
+                                                @foreach (var option in OptionsConnectionType)
+                                                {
+                                                    @if (option == ConnectionType.ToString())
+                                                    {
+                                                        <option value="@option" selected>@option</option>
+                                                    }
+                                                    else
+                                                    {
+                                                        <option value="@option">@option</option>
+                                                    }
+                                                }
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    @if ((IntegratedSecurityDisplay == "False") || (ConnectionType == ConnectionType.FabricWarehouse))
+                                    {
+                                        <tr>
+                                            <td style="text-align: right">
+                                                <label for="DatabaseUsername" class="control-label" style="font-weight: bold">Database Username: </label>
+                                            </td>
+                                            <td colspan="2">
+                                                <input type="text" id="DatabaseUsername" class="form-control" @bind="DatabaseUsername" />
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="text-align: right">
+                                                <label for="DatabasePassword" class="control-label" style="font-weight: bold">Database Password: </label>
+                                            </td>
+                                            <td colspan="2">
+                                                <input type="password" id="DatabasePassword" class="form-control" @bind="DatabasePassword" />
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            <br />
+                            <table class="form-group" cellpadding="4" cellspacing="4">
+                                <tbody>
+                                    <tr>
+                                        <td>
+                                            @if (!boolProcessing)
+                                            {
+                                                <button type="button" @onclick="() => SetConnection()">
+                                                    Set Database Connection
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <div class="progress" style="margin-bottom: 20px;">
+                                                    <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%;"></div>
+                                                </div>
+                                                <span>Processing...</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        @if (ConfigurationType != ConfigurationType.DatabaseFull)
+                        {
+                            <div id="azurestorage-tab" class="tab-content">
+                                <div class="has-space">
+                                    <AzureStorageConnectionDialog StorageAccountName="@StorageAccountName"
+                                    ContainerName="@ContainerName"
+                                    AccountKey="@AccountKey" />
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div style="display: flex; flex-direction: row; align-items: center;">
+                            <div style="display: flex; align-items: center; margin-right: 20px; cursor: pointer;"
+                                 @onclick="() => SelectTable()">
+                                <input type="radio"
+                                       id="radioTable"
+                                       name="ImportMode"
+                                       value="Table"
+                                       checked="@(ImportMode == "Table")"
+                                       style="margin-right: 5px;" />
+                                <label for="radioTable" style="cursor: pointer;">Table</label>
+                            </div>
+                            <div style="display: flex; align-items: center; cursor: pointer;"
+                                 @onclick="() => SelectQuery()">
+                                <input type="radio"
+                                       id="radioQuery"
+                                       name="ImportMode"
+                                       value="Query"
+                                       checked="@(ImportMode == "Query")"
+                                       style="margin-right: 5px;" />
+                                <label for="radioQuery" style="cursor: pointer;">Query</label>
+                            </div>
+                        </div>
+                        <br />
+                        @if (ImportMode == "Table")
+                        {
+                            <div style="width: 100%; height: 100px; overflow: auto">
+                                <br />
+                                <select @onchange="OnSelectedTableChanged" style="width: 100%">
+                                    @foreach (var tableName in tableNames)
+                                    {
+                                        <option value="@tableName">@tableName</option>
+                                    }
+                                </select>
+                            </div>
+                        }
+                        else
+                        {
+                            <div style="width: 100%; height: 100px; overflow: auto">
+                                <div class="window-body has-space">
+                                    <textarea id="TSQLQuery"
+                                              rows="3"
+                                              @bind="TSQLQuery"
+                                              style="width: 100%; padding: 10px; font-family: monospace; font-size: 14px;"></textarea>
+                                </div>
+                            </div>
+                        }
+                        <table class="form-group" cellpadding="4" cellspacing="4">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        @if (!boolProcessing)
+                                        {
+                                            <button type="button" @onclick="() => ImportTable()">
+                                                Import Data
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <div class="progress" style="margin-bottom: 20px;">
+                                                <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%;"></div>
+                                            </div>
+                                            <span>Processing...</span>
+                                        }
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal-backdrop fade show"></div>
+@if (ShowDeleteConfirmation)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Confirm Delete</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseDeleteConfirmationPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="DeleteConnection">Yes</button>
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="CloseDeleteConfirmationPopup">No</button>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+@code {
+#nullable disable
+    [Parameter] public string ServerName { get; set; }
+    [Parameter] public string DatabaseName { get; set; }
+    [Parameter] public ConnectionType ConnectionType { get; set; }
+    [Parameter] public string IntegratedSecurityDisplay { get; set; }
+    [Parameter] public string DatabaseUsername { get; set; } = "";
+    [Parameter] public string DatabasePassword { get; set; } = "";
+    [Parameter] public ConfigurationType ConfigurationType { get; set; }
+
+    [Parameter] public EventCallback<DatabaseImport> OnSetConnection { get; set; }
+    [Parameter] public EventCallback Close { get; set; }
+
+    private ConnectionSetting ConnectionSetting = new ConnectionSetting();
+    private List<string> tableNames = new List<string> { };
+    private string selectedTable { get; set; } = "";
+
+    private bool boolProcessing { get; set; } = false;
+    private string strStatusMessage { get; set; } = "";
+    private string DatabaseConnectionString { get; set; } = "";
+
+    private string StorageAccountName { get; set; } = "";
+    private string ContainerName { get; set; } = "";
+    private string AccountKey { get; set; } = "";
+
+    private string ConnectionMode { get; set; } = "DatabaseConnection";
+    private string ImportMode = "Table";
+    private string TSQLQuery = "";
+
+    private string ChooseConnection = "";
+    private List<string> Connections = new List<string>();
+
+    private List<string> OptionsTrueFalse = new List<string> { "True", "False" };
+    private List<string> OptionsConnectionType = new List<string> { "SQLServer", "FabricWarehouse" };
+
+    private bool ShowDeleteConfirmation { get; set; } = false;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        base.OnParametersSet();
+
+        SettingsService.LoadSettings();
+
+        Connections = new List<string>();
+
+        var TempConnections = SettingsService.Settings.ConnectionSettings
+            .Where(c => c.ConnectionType != ConnectionType.AzureStorage)
+            .Select(c => c)
+            .OrderBy(c => c.DatabaseServerSettings.ServerName)
+            .ToList();
+
+        foreach (var connection in TempConnections)
+        {
+            Connections.Add($"{connection.DatabaseServerSettings.ServerName}/{connection.DatabaseServerSettings.DatabaseName}");
+        }
+
+        if (Connections.Count > 0)
+        {
+            ChooseConnection = Connections[0];
+            await LoadConnection(ChooseConnection);
+        }
+
+        // Get Azure Storage Connection
+
+        var AzureStorageConnection = SettingsService.Settings.ConnectionSettings
+        .Where(c => c.ConnectionType == ConnectionType.AzureStorage)
+        .Select(c => c)
+        .FirstOrDefault();
+
+        if (AzureStorageConnection != null)
+        {
+            StorageAccountName = AzureStorageConnection.AzureStorageSettings.StorageAccountName;
+            ContainerName = AzureStorageConnection.AzureStorageSettings.ContainerName;
+            AccountKey = await SecureStorage.Default.GetAsync($"AzureStorageAccountKey");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var LastConnectionServerName = await localStorage.GetItemAsync<string>("LastConnectionServerName");
+                var LastConnectionDatabaseName = await localStorage.GetItemAsync<string>("LastConnectionDatabaseName");
+
+                if (LastConnectionServerName != null && LastConnectionDatabaseName != null)
+                {
+
+                    // Grab the entire connection list from the settings
+                    var connectionList = SettingsService.Settings.ConnectionSettings;
+
+                    // Find an existing connection
+                    var Connection = connectionList
+                        .FirstOrDefault(
+                            c => c.DatabaseServerSettings.DatabaseName == LastConnectionDatabaseName
+                            && c.DatabaseServerSettings.ServerName == LastConnectionServerName);
+
+                    if (Connection != null)
+                    {
+                        var ConnectionString = "";
+
+                        ConnectionString = $"{Connection.DatabaseServerSettings.ServerName}/{Connection.DatabaseServerSettings.DatabaseName}";
+
+                        if (Connections.Contains(ConnectionString))
+                        {
+                            ChooseConnection = ConnectionString;
+                            StateHasChanged();
+                            await LoadConnection(ChooseConnection);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                strStatusMessage = ex.GetBaseException().Message;
+                await _LogService.WriteToLogAsync(strStatusMessage);
+                return;
+            }
+        }
+    }
+
+    private void UpdateDialog(ChangeEventArgs e)
+    {
+        IntegratedSecurityDisplay = e.Value.ToString();
+    }
+
+    // Popups
+
+    private void DeleteConfirmation()
+    {
+        ShowDeleteConfirmation = true;
+    }
+
+    private void CloseDeleteConfirmationPopup()
+    {
+        ShowDeleteConfirmation = false;
+    }
+
+    private async Task DeleteConnection()
+    {
+        // Grab existing ApplicationSettings
+        var applicationSettings = SettingsService.Settings.ApplicationSettings;
+
+        // Grab the entire connection list from the settings
+        var connectionList = SettingsService.Settings.ConnectionSettings;
+
+        // Find an existing connection
+        var Connection = connectionList
+            .FirstOrDefault(
+                c => c.DatabaseServerSettings.DatabaseName == DatabaseName
+                && c.DatabaseServerSettings.ServerName == ServerName);
+
+        if (Connection != null)
+        {
+            connectionList.Remove(Connection);
+
+            // Save the settings
+            await SettingsService.UpdateSettingsAsync(applicationSettings, connectionList);
+        }
+
+        // Close the popup
+        ShowDeleteConfirmation = false;
+
+        // Refresh the connections
+        Connections = new List<string>();
+
+        var TempConnections = SettingsService.Settings.ConnectionSettings
+            .Where(c => c.ConnectionType != ConnectionType.AzureStorage)
+            .Select(c => c)
+            .OrderBy(c => c.DatabaseServerSettings.ServerName)
+            .ToList();
+
+        foreach (var connection in TempConnections)
+        {
+            Connections.Add($"{connection.DatabaseServerSettings.ServerName}/{connection.DatabaseServerSettings.DatabaseName}");
+        }
+
+        if (Connections.Count > 0)
+        {
+            ChooseConnection = Connections[0];
+            await LoadConnection(ChooseConnection);
+        }
+    }
+
+    // Utility
+
+    #region private async Task LoadConnection(string ChooseConnection)
+    private async Task LoadConnection(string ChooseConnection)
+    {
+        if (ChooseConnection != "")
+        {
+            var connection = SettingsService.Settings.ConnectionSettings
+                .FirstOrDefault(c => $"{c.DatabaseServerSettings.ServerName}/{c.DatabaseServerSettings.DatabaseName}" == ChooseConnection);
+
+            if (connection != null)
+            {
+                ConnectionType = connection.ConnectionType;
+                ServerName = connection.DatabaseServerSettings.ServerName;
+                DatabaseName = connection.DatabaseServerSettings.DatabaseName;
+                IntegratedSecurityDisplay = connection.DatabaseServerSettings.IntegratedSecurityDisplay;
+                DatabaseUsername = connection.DatabaseServerSettings.DatabaseUsername;
+                DatabasePassword = await SecureStorage.Default.GetAsync($"DatabasePassword-{ServerName}-{DatabaseName}");
+
+                StateHasChanged();
+            }
+        }
+    }
+    #endregion
+
+    #region private async Task SetConnection()
+    private async Task SetConnection()
+    {
+        boolProcessing = true;
+        strStatusMessage = "";
+
+        ConnectionSetting.ConnectionType = ConnectionType;
+        ConnectionSetting.DatabaseName = DatabaseName;
+        ConnectionSetting.IntegratedSecurity = Convert.ToBoolean(IntegratedSecurityDisplay);
+        ConnectionSetting.Password = DatabasePassword;
+        ConnectionSetting.ServerName = ServerName;
+        ConnectionSetting.Username = DatabaseUsername;
+
+        // Attempt to build/test the actual connection string
+        DTOStatus result = SetConnectionSetting(ConnectionSetting);
+
+        if (result.Success)
+        {
+            // Store the resulting connection string
+            ConnectionSetting.ConnectionString = result.ConnectionString;
+
+            // Change mode to show table dropdown
+            ConnectionMode = "ImportTable";
+
+            // Update Settings
+            var settingsService = new SettingsService();
+
+            // Grab existing ApplicationSettings
+            var applicationSettings = settingsService.Settings.ApplicationSettings;
+
+            // Grab the entire connection list from the settings
+            var connectionList = settingsService.Settings.ConnectionSettings;
+
+            // Find an existing connection or create one
+            var Connection = connectionList
+                .FirstOrDefault(
+                    c => c.DatabaseServerSettings.DatabaseName == DatabaseName
+                    && c.DatabaseServerSettings.ServerName == ServerName);
+
+            if (Connection == null)
+            {
+                // Create a new connection entry
+                Connection = new SettingsService.ConnectionSettings
+                    {
+                        ConnectionType = ConnectionType,
+                        DatabaseServerSettings = new SettingsService.DatabaseServerSettings()
+                    };
+
+                connectionList.Add(Connection);
+
+                // Update its properties
+                Connection.DatabaseServerSettings.ServerName = ServerName;
+                Connection.DatabaseServerSettings.DatabaseName = DatabaseName;
+                Connection.DatabaseServerSettings.IntegratedSecurityDisplay = IntegratedSecurityDisplay;
+                Connection.DatabaseServerSettings.DatabaseUsername = DatabaseUsername;
+            }
+            else
+            {
+                // Update its properties
+                Connection.ConnectionType = ConnectionType;
+                Connection.DatabaseServerSettings.ServerName = ServerName;
+                Connection.DatabaseServerSettings.DatabaseName = DatabaseName;
+                Connection.DatabaseServerSettings.IntegratedSecurityDisplay = IntegratedSecurityDisplay;
+                Connection.DatabaseServerSettings.DatabaseUsername = DatabaseUsername;
+            }
+
+            // Save the settings
+            await settingsService.UpdateSettingsAsync(applicationSettings, connectionList);
+
+            // Save the last connection to LocalStorage
+            await localStorage.SetItemAsync("LastConnectionServerName", ServerName);
+            await localStorage.SetItemAsync("LastConnectionDatabaseName", DatabaseName);
+
+            if (DatabasePassword != null)
+            {
+                if (DatabasePassword.Trim() != "")
+                {
+                    // Save the password securely
+                    await SecureStorage.Default.SetAsync($"DatabasePassword-{ServerName}-{DatabaseName}", DatabasePassword.Trim());
+                }
+            }
+
+            if (ConfigurationType == ConfigurationType.DatabaseFull)
+            {
+                strStatusMessage = result.StatusMessage;
+
+                boolProcessing = false;
+                StateHasChanged();
+
+                // Proceed to retrieve tables
+                GetTablesInDatabase();
+            }
+            else
+            {
+                await OnSetConnection.InvokeAsync(new DatabaseImport { ConnectionSetting = ConnectionSetting });
+            }
+        }
+        else
+        {
+            strStatusMessage = result.StatusMessage;
+        }
+
+        boolProcessing = false;
+        StateHasChanged();
+    }
+    #endregion
+
+    #region private void OnSelectedTableChanged(ChangeEventArgs e)
+    private void OnSelectedTableChanged(ChangeEventArgs e)
+    {
+        selectedTable = e.Value.ToString();
+    }
+    #endregion
+
+    private async Task ImportTable()
+    {
+        DatabaseImport objDatabaseImport = new DatabaseImport();
+        objDatabaseImport.ConnectionSetting = ConnectionSetting;
+        objDatabaseImport.TableName = selectedTable;
+
+        if (ImportMode == "Query")
+        {
+            boolProcessing = true;
+
+            objDatabaseImport.SQLQuery = TSQLQuery;
+
+            // Try to execute the query
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(ConnectionSetting.ConnectionString))
+                {
+                    connection.Open();
+                    // Execute the query
+                    using (SqlCommand command = new SqlCommand(TSQLQuery, connection))
+                    {
+                        command.ExecuteNonQuery();
+                    }
+                    connection.Close();
+                }
+            }
+            catch (Exception ex)
+            {
+                boolProcessing = false;
+                strStatusMessage = ex.GetBaseException().Message;
+                await _LogService.WriteToLogAsync(strStatusMessage);
+                return;
+            }
+        }
+
+        boolProcessing = false;
+
+        await OnSetConnection.InvokeAsync(objDatabaseImport);
+    }
+
+    private void SelectTable()
+    {
+        ImportMode = "Table";
+    }
+
+    private void SelectQuery()
+    {
+        ImportMode = "Query";
+    }
+
+    #region public DTOStatus SetConnectionSetting(ConnectionSetting objConnectionSetting)
+    public DTOStatus SetConnectionSetting(ConnectionSetting objConnectionSetting)
+    {
+        // The return message
+        DTOStatus objDTOStatus = new DTOStatus();
+        objDTOStatus.Success = true;
+
+        // Create a Database connection string
+        string strConnectionString = "";
+
+        if (ConnectionType == ConnectionType.SQLServer)
+        {
+            strConnectionString = SQLCreateDatabaseConnectionString(objConnectionSetting);
+        }
+        else if (ConnectionType == ConnectionType.FabricWarehouse)
+        {
+            strConnectionString = FabricCreateDatabaseConnectionString(objConnectionSetting);
+        }
+
+        // Test the database connection string
+        if (DatabaseConnectionValid(strConnectionString))
+        {
+            try
+            {
+                objDTOStatus.Success = true;
+                objDTOStatus.ConnectionString = strConnectionString;
+            }
+            catch (Exception ex)
+            {
+                // appsettings.json file update error
+                objDTOStatus.Success = false;
+                objDTOStatus.StatusMessage = ex.GetBaseException().Message;
+            }
+        }
+        else
+        {
+            // Bad connection setting
+            objDTOStatus.Success = false;
+            objDTOStatus.StatusMessage = "Connection settings are not valid";
+        }
+
+        // Return the result
+        return objDTOStatus;
+    }
+    #endregion
+
+    #region private string SQLCreateDatabaseConnectionString(ConnectionSetting objConnectionSetting)
+    private string SQLCreateDatabaseConnectionString(ConnectionSetting objConnectionSetting)
+    {
+        StringBuilder SB = new StringBuilder();
+        string strConnectionString = "";
+
+        string strUserInfo = (!objConnectionSetting.IntegratedSecurity) ?
+            String.Format("uid={0};pwd={1}",
+            objConnectionSetting.Username,
+            objConnectionSetting.Password) :
+            "integrated security=True";
+
+        strConnectionString = String.Format("{0}data source={1};initial catalog={2};{3};TrustServerCertificate=True",
+            SB.ToString(),
+            objConnectionSetting.ServerName,
+            objConnectionSetting.DatabaseName,
+            strUserInfo);
+
+        return strConnectionString;
+    }
+    #endregion
+
+    #region private string FabricCreateDatabaseConnectionString(ConnectionSetting objConnectionSetting)
+    private string FabricCreateDatabaseConnectionString(ConnectionSetting objConnectionSetting)
+    {
+        StringBuilder SB = new StringBuilder();
+        string strConnectionString = "";
+
+        string strUserInfo =
+            String.Format("Authentication=Active Directory Service Principal;uid={0};pwd={1}",
+            objConnectionSetting.Username,
+            objConnectionSetting.Password);
+
+        strConnectionString = String.Format("{0}data source={1};initial catalog={2};{3};TrustServerCertificate=True",
+            SB.ToString(),
+            objConnectionSetting.ServerName,
+            objConnectionSetting.DatabaseName,
+            strUserInfo);
+
+        return strConnectionString;
+    }
+    #endregion
+
+    #region private bool DatabaseConnectionValid(string strConnectionString)
+    private bool DatabaseConnectionValid(string strConnectionString)
+    {
+        bool boolDatabaseConnectionValid = false;
+
+        // Try to connect to the database
+
+        try
+        {
+            using (SqlConnection connection = new SqlConnection(strConnectionString))
+            {
+                connection.Open();
+                boolDatabaseConnectionValid = true;
+                DatabaseConnectionString = strConnectionString;
+            }
+        }
+        catch
+        {
+            boolDatabaseConnectionValid = false;
+        }
+
+        return boolDatabaseConnectionValid;
+    }
+    #endregion
+
+    // ********************************************************************************************************************
+    // Get Tables in Database
+    // ********************************************************************************************************************
+
+    #region private void GetTablesInDatabase()
+    private void GetTablesInDatabase()
+    {
+        tableNames = new List<string>();
+
+        // Use the DatabaseConnectionString to get the tables in the database
+        using (SqlConnection connection = new SqlConnection(ConnectionSetting.ConnectionString))
+        {
+            connection.Open();
+
+            // Get the tables in the database
+            DataTable dt = connection.GetSchema("Tables");
+
+            // Get the table names
+            foreach (DataRow row in dt.Rows)
+            {
+                // Ensure that the table is not a system table
+                if (row[3].ToString() == "BASE TABLE")
+                {
+                    string tablename = $"[{(string)row[1]}].[{(string)row[2]}]";
+                    tableNames.Add(tablename);
+                }
+            }
+
+            connection.Close();
+
+            // order the table names
+            tableNames.Sort();
+
+            // Set the value to the first table
+            if (tableNames.Count > 0)
+            {
+                selectedTable = tableNames[0];
+            }
+        }
+    }
+    #endregion
+
+    // Utility
+
+    #region public static string ShortenServerName(string input, int maxServerNameLength)
+    public static string ShortenServerName(string input, int maxServerNameLength)
+    {
+        if (string.IsNullOrEmpty(input) || !input.Contains("/"))
+            return input;
+
+        string[] parts = input.Split('/');
+        string serverName = parts[0];
+        string databaseName = parts.Length > 1 ? parts[1] : string.Empty;
+
+        if (serverName.Length > maxServerNameLength)
+        {
+            serverName = serverName.Substring(0, maxServerNameLength) + "...";
+        }
+
+        return $"{serverName}/{databaseName}";
+    }
+    #endregion
+}

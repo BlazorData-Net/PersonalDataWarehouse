@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Personal DataWarehouse POC MAUI</title>
+    <base href="/" />
+    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
+    <link rel="stylesheet" href="_content/Radzen.Blazor/css/default.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="PersonalDataWarehouse.styles.css" />
+    <link rel="stylesheet" href="_content/BlazorDatasheet/sheet-styles.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf_viewer.min.css" />
+    <link rel="stylesheet" href="css/7.css" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="icon" href="data:,">
+</head>
+
+<body>
+
+    <div class="status-bar-safe-area"></div>
+
+    <div id="app">Loading...</div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">🗙</a>
+    </div>
+
+    <script src="_content/Blazored.LocalStorage/Blazored.LocalStorage.js"></script>
+    <script src="_framework/blazor.webview.js" autostart="false"></script>
+    <script src="_content/BlazorDatasheet/blazor-datasheet.js" type="text/javascript"></script>
+    <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
+    <script type="module" src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs"></script>
+    <script type="module" src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.worker.min.mjs"></script>
+    <script type="module" src="js/site.js"></script>
+    <script>
+        window.blazorPdfViewer = {
+            renderPdf: (containerRef, pdfData) => {
+                if (typeof renderPdfInDiv === "function") {
+                    renderPdfInDiv(containerRef, pdfData);
+                } else {
+                    console.error("renderPdfInDiv is not defined or not accessible.");
+                }
+            },
+            previousPage: (containerRef) => {
+                onPrevPage(containerRef);
+            },
+            nextPage: (containerRef) => {
+                onNextPage(containerRef);
+            },
+            zoomIn: (containerRef) => {
+                onZoomIn(containerRef);
+            },
+            zoomOut: (containerRef) => {
+                onZoomOut(containerRef);
+            },
+            printPdf: (containerRef) => {
+                onPrintPdf(containerRef);
+            },
+            getPageCount: (containerRef) => {
+                return ongetPageCount(containerRef);
+            }
+        };
+    </script>
+    <script>
+        function showTab(tabElement, tabId) {
+            const tabs = document.querySelectorAll('.tab-item');
+            const contents = document.querySelectorAll('.tab-content');
+
+            // Remove the 'active' class from all tabs and contents
+            tabs.forEach(tab => tab.classList.remove('active'));
+            contents.forEach(content => content.classList.remove('active'));
+
+            // Add the 'active' class to the selected tab and its corresponding content
+            tabElement.classList.add('active');
+            document.getElementById(tabId).classList.add('active');
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,948 @@
+﻿@page "/kqlpage"
+@using System.Collections.Specialized
+@using System.Text.Json
+@using System.Text
+@using KustoLoco.Core
+@using KustoLoco.Core.Console
+@using KustoLoco.Core.DataSource
+@using KustoLoco.Core.DataSource.Columns
+@using KustoLoco.Core.Settings
+@using KustoLoco.Rendering
+@using Microsoft.Extensions.AI
+@using System.Diagnostics.CodeAnalysis
+@using PersonalDataWarehouse.AI
+@using PersonalDataWarehouse.Services
+@using PersonalDataWarehouse.Model
+@using MonacoRazor
+@using System.Data
+@using System.Diagnostics
+@inject DatabaseService databaseService
+@inject DataService DataService
+@inject SettingsService SettingsService
+@inject OrchestratorMethods OrchestratorMethods
+@inject IJSRuntime JS
+@inject LogService _LogService
+<PageTitle>Kusto Queries</PageTitle>
+<h4>Kusto Queries</h4>
+<br />
+@if (IsLoading)
+{
+    <div role="progressbar" class="marquee" style="width: 25%"></div>
+}
+else
+{
+    <div>
+        @if (QueryList.Count > 0)
+        {
+            @if (!string.IsNullOrEmpty(CurrentQueryName))
+            {
+                <label>Select Query: </label>
+                <select @onchange="@(async (args) =>
+                    {
+                        CurrentQueryName = args.Value?.ToString();
+                        await LoadQueryAsync(CurrentQueryName);
+                    })">
+                    @foreach (var query in QueryList)
+                    {
+                        <option value="@query"
+                        selected="@(query == CurrentQueryName ? "selected" : null)">
+                            @query
+                        </option>
+                    }
+                </select>
+            }
+            else
+            {
+                <button @onclick="Reset">Reset</button>
+            }
+        }
+        &nbsp;&nbsp;
+        <label>Data Source: </label>
+        <select @onchange="@(async (args) =>
+                            {
+                                CurrentSelectedTableWizard = args.Value?.ToString();
+                            })">
+            @foreach (var table in TableList)
+            {
+                <option value="@table" selected="@(table == CurrentSelectedTableWizard ? "selected" : null)">
+                    @table
+                </option>
+            }
+        </select>
+    </div>
+    <br />
+    <div>
+        <div class="rz-p-sm-1"
+        style="background-color:whitesmoke; border-block:thin; border-block-color:lightgray; text-align:left">
+            <button @onclick="NewScript" title="New" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">note_add</i>
+            </button>
+
+            <button @onclick="SaveQueryName" title="Save" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">save</i>
+            </button>
+
+            <button disabled="@(CanUndo == false)" @onclick="() => Undo()" title="Undo" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">undo</i>
+            </button>
+
+            <button disabled="@(CanRedo == false)" @onclick="() => Redo()" title="Redo" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">redo</i>
+            </button>
+
+            @if (!string.IsNullOrEmpty(CurrentQueryName))
+            {
+                <button @onclick="DeleteConfirmation" title="Delete" style="background:none;border:none;">
+                    <i class="material-icons" style="color:black;">delete</i>
+                </button>
+            }
+
+            <button @onclick="Execute" title="Execute" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">play_arrow</i>
+            </button>
+
+            <button @onclick="OpenAIPopup" title="AI" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">psychology</i>
+            </button>
+            @if (ContentChanged)
+            {
+                <span style="color:red">&nbsp;&nbsp;<b>Editing...</b></span>
+            }
+        </div>
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Start" Wrap="FlexWrap.Wrap">
+            <CodeEditor @ref="@MonacoCodeEditor"
+            Language="csharp"
+            Code="@CurrentScript"
+            MinHeight="500px"
+            Width="700px"
+            Margin="0px"
+            OnCompletionsRequested="GetCompletionsAsync" />
+            <div style="overflow: auto;">
+                <iframe style="width:1000px; min-height: 500px;" srcdoc="@table"></iframe>
+            </div>
+        </RadzenStack>
+    </div>
+    <br />
+}
+
+<!-- POPUPS -->
+@if (IsSaveQueryPopupVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Save KQL Query</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseSaveQueryPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <form @onsubmit="SaveQueryAsync">
+                            <div>
+                                <label><b>Current Database:</b> @CurrentDatabaseName</label>
+                            </div>
+                            <br />
+                            <div>
+                                <label for="kqlQueryName">Query Name:</label>
+                                <input type="text" id="kqlQueryName" maxlength="50"
+                                style="width: 300px;"
+                                @bind="CurrentQueryNameWithoutDatabase" />
+                                &nbsp;&nbsp;&nbsp;&nbsp;
+                                <button type="submit">Submit</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (ShowAI)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">AI Prompt</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseAIPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+                        @if (IsAILoading)
+                        {
+                            <div role="progressbar" class="marquee" style="width: 100%"></div>
+                        }
+                        else
+                        {
+                            <div class="has-scrollbar" style="width: 100%; height: 110px; overflow: auto">
+                                <textarea @bind="AIMessage" maxlength="1000"
+                                style="width: 100%; height: 100px; overflow: auto; resize: vertical;">
+                                </textarea>
+                            </div>
+                            <br />
+                            <button @onclick="AIbtn">Submit</button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+
+@if (ShowDeleteConfirmation)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Confirm Delete</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseDeleteConfirmationPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space" style="text-align: center;">
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="DeleteAsync">Yes</button>
+                        <span>&nbsp; &nbsp;</span>
+                        <button @onclick="CloseDeleteConfirmationPopup">No</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Alert!</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseMessagePopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <div class="has-scrollbar" style="width: 100%; height: 100px; overflow: auto">
+                            @Message
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+
+    // ----- Editor & UI State -----
+
+    private CodeEditor MonacoCodeEditor { get; set; }
+    private bool ContentChanged { get; set; }
+    private string CurrentScript { get; set; } = string.Empty;
+    private List<string> TableList = new List<string>();
+    List<Suggestion> suggestions = new List<Suggestion>();
+
+    private readonly KustoQueryContext kustoContext = new();
+    private MarkupString table;
+
+    private DataParameters objDataParameters = new DataParameters();
+
+    private bool IsLoading { get; set; } = false;
+    private bool IsAILoading { get; set; } = false;
+    private bool IsOutputLoading { get; set; } = false;
+
+    // List of queries that exist
+    private List<string> QueryList = new();
+    private string CurrentQueryName = "";
+    private string CurrentQueryNameWithoutDatabase = string.Empty;
+
+    private List<string> AllDatabases = new();
+    private string CurrentDatabaseName = "Default";
+    private string CurrentSelectedTableWizard = "";
+
+    // Undo/Redo
+    private Stack<string> undoStack = new();
+    private Stack<string> redoStack = new();
+    private bool CanUndo => undoStack.Count > 0;
+    private bool CanRedo => redoStack.Count > 0;
+
+    // Popups
+    private bool IsSaveQueryPopupVisible { get; set; } = false;
+    private bool IsLoadingSheet { get; set; } = false;
+    private bool ShowDeleteConfirmation { get; set; } = false;
+    private bool ShowAI { get; set; } = false;
+
+    private string AIMessage = "";
+    private string Message = "";
+
+    // A simple KQL sample to show if there are no queries
+    private string SampleKql = @"
+    // Sample KQL:
+    // Show the first few rows of your table
+    <TableName> | take 100
+    ";
+
+    protected override void OnInitialized()
+    {
+        objDataParameters = new DataParameters()
+            {
+                data = new List<IDictionary<string, object>>(),
+                columns = new Dictionary<string, Type>()
+            };
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // load all database names
+        AllDatabases = await databaseService.GetAllDatabasesAsync();
+
+        LoadQueryList();
+
+        await LoadTableListDropdownAsync();
+
+        if (QueryList.Count == 0)
+        {
+            CurrentQueryName = "";
+            CurrentScript = SampleKql;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && QueryList.Count > 0)
+        {
+            CurrentQueryName = QueryList.First();
+            await LoadQueryAsync(CurrentQueryName);
+        }
+    }
+
+    public Task<Suggestion[]> GetCompletionsAsync(string currentValue, Position position)
+    {
+        // Common Kusto Query Language items
+        var kqlSuggestions = new[]
+        {
+            new Suggestion { Label = "let",         InsertText = "let "         },
+            new Suggestion { Label = "where",       InsertText = "where "       },
+            new Suggestion { Label = "project",     InsertText = "project "     },
+            new Suggestion { Label = "extend",      InsertText = "extend "      },
+            new Suggestion { Label = "summarize",   InsertText = "summarize "   },
+            new Suggestion { Label = "count()",     InsertText = "count()"      },
+            new Suggestion { Label = "distinct",    InsertText = "distinct "    },
+            new Suggestion { Label = "top",         InsertText = "top "         },
+            new Suggestion { Label = "orderby",     InsertText = "order by "    },
+            new Suggestion { Label = "join",        InsertText = "join "        },
+            new Suggestion { Label = "union",       InsertText = "union "       },
+            new Suggestion { Label = "take",        InsertText = "take "        },
+            new Suggestion { Label = "skip",        InsertText = "skip "        },
+            new Suggestion { Label = "filter",      InsertText = "filter "      },
+            new Suggestion { Label = "search",      InsertText = "search "      },
+            new Suggestion { Label = "parse",       InsertText = "parse "       },
+            new Suggestion { Label = "evaluate",    InsertText = "evaluate "    },
+        };
+
+        return Task.FromResult(kqlSuggestions);
+    }
+
+
+    // Table Dropdown
+
+    private async Task LoadTableListDropdownAsync()
+    {
+        TableList = new List<string>();
+
+        var colTables = await databaseService.GetAllTablesAsync();
+
+        if (colTables.Count > 0)
+        {
+            // Add each table to the list prepended with "Table: "
+            foreach (var table in colTables)
+            {
+                TableList.Add($"Table: {table}");
+            }
+        }
+
+        // Get all Views
+        var colViews = await databaseService.GetAllViewsAsync();
+
+        if (colViews.Count > 0)
+        {
+            // Add each view to the list prepended with "View: "
+            foreach (var view in colViews)
+            {
+                TableList.Add($"View: {view}");
+            }
+        }
+
+        // Sort the list
+        TableList.Sort();
+
+        // sort so that entries that begin with "default/" are listed first
+        TableList.Sort(
+            (x, y) => x.StartsWith("Default/") == y.StartsWith("Default/")
+            ? 0
+            : x.StartsWith("Default/") ? -1 : 1);
+
+        // Add: * Select DataSource* at the end of the list
+        TableList.Add("*Select DataSource*");
+
+        CurrentSelectedTableWizard = TableList.Last();
+    }
+
+    // -----------------------------------------
+    // Load/Save/Deleting Queries
+    // -----------------------------------------
+
+    private void LoadQueryList()
+    {
+        QueryList.Clear();
+
+        foreach (var database in AllDatabases)
+        {
+            string queriesFolder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "PersonalDataWarehouse",
+                "Databases",
+                database,
+                "KQLQueries");
+
+            if (Directory.Exists(queriesFolder))
+            {
+                var files = Directory.GetFiles(queriesFolder, "*.kql");
+                foreach (var file in files)
+                {
+                    // The “QueryName” might be "DatabaseName/filename"
+                    string justFile = Path.GetFileNameWithoutExtension(file);
+                    // E.g. "Default/MyQuery"
+                    QueryList.Add($"{database}/{justFile}");
+                }
+            }
+        }
+    }
+
+    private async Task LoadQueryAsync(string paramQueryName)
+    {
+        // separate the database name from the query file
+        var (database, query) = DataService.ExtractDatabaseAndTable(paramQueryName);
+
+        string queriesFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "PersonalDataWarehouse",
+            "Databases",
+            database,
+            "KQLQueries");
+
+        var fileName = Path.Combine(queriesFolder, $"{query}.kql");
+
+        if (File.Exists(fileName))
+        {
+            string FileContent = File.ReadAllText(fileName);
+
+            // Set CurrentSelectedTableWizard
+            // find ~~~ in FileContent and set everything after that to CurrentScript
+            int index = FileContent.IndexOf("~~~");
+            if (index > 0)
+            {
+                CurrentSelectedTableWizard = FileContent.Substring(0, index);
+                CurrentScript = FileContent.Substring(index + 3);
+            }
+            else
+            {
+                CurrentSelectedTableWizard = "*Select DataSource*";
+                CurrentScript = FileContent;
+            }
+
+            CurrentQueryName = paramQueryName;
+
+            StateHasChanged();
+
+            if (MonacoCodeEditor != null)
+            {
+                await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
+
+                // Clear undo/redo
+                undoStack.Clear();
+                redoStack.Clear();
+                undoStack.Push(CurrentScript);
+            }
+        }
+        else
+        {
+            Message = $"Query file not found: {fileName}";
+        }
+    }
+
+    private void SaveQueryName()
+    {
+        if (!string.IsNullOrEmpty(CurrentQueryName))
+        {
+            var (db, qName) = DataService.ExtractDatabaseAndTable(CurrentQueryName);
+            CurrentDatabaseName = db;
+            CurrentQueryNameWithoutDatabase = qName;
+        }
+        else
+        {
+            // Get CurrentDatabaseName from the CurrentSelectedTableWizard
+            if (CurrentSelectedTableWizard.StartsWith("Table:"))
+            {
+                string TableWizardName = CurrentSelectedTableWizard.Substring(7);
+                // Separate the table name from the database
+                var (Database, TableName) = DataService.ExtractDatabaseAndTable(TableWizardName);
+                CurrentDatabaseName = Database;
+                CurrentQueryNameWithoutDatabase = $"KQL{TableName}";
+            }
+            else if (CurrentSelectedTableWizard.StartsWith("View:"))
+            {
+                string TableWizardName = CurrentSelectedTableWizard.Substring(6);
+                // Separate the view name from the database
+                var (Database, ViewName) = DataService.ExtractDatabaseAndTable(TableWizardName);
+                CurrentDatabaseName = Database;
+                CurrentQueryNameWithoutDatabase = $"KQL{ViewName}";
+            }
+        }
+
+        IsSaveQueryPopupVisible = true;
+    }
+
+    private async Task SaveQueryAsync()
+    {
+        try
+        {
+            CurrentQueryNameWithoutDatabase = CurrentQueryNameWithoutDatabase.Trim();
+
+            if (string.IsNullOrEmpty(CurrentQueryNameWithoutDatabase))
+            {
+                Message = "Please enter a query name.";
+                return;
+            }
+
+            IsLoading = true;
+
+            // Clean up the name
+            string cleanedName = databaseService.RemoveSpacesSpecialCharacters(CurrentQueryNameWithoutDatabase);
+            if (cleanedName != CurrentQueryNameWithoutDatabase)
+            {
+                IsLoading = false;
+                CurrentQueryNameWithoutDatabase = cleanedName;
+                Message = $"Query name changed to {CurrentQueryNameWithoutDatabase}.";
+            }
+
+            // Get the code from the editor
+            CurrentScript = await MonacoCodeEditor.GetCodeAsync();
+
+            // Update the Undo stack
+            undoStack.Push(CurrentScript);
+
+            // Save to a *.kql file
+            string queriesFolder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "PersonalDataWarehouse",
+                "Databases",
+                CurrentDatabaseName,
+                "KQLQueries");
+
+            Directory.CreateDirectory(queriesFolder); // ensure it exists
+
+            string fileName = Path.Combine(queriesFolder, $"{CurrentQueryNameWithoutDatabase}.kql");
+
+            // Put the name of the Datasource in the query file
+            string QueryFileContent = $"{CurrentSelectedTableWizard}~~~{CurrentScript}";
+
+            File.WriteAllText(fileName, QueryFileContent);
+
+            CurrentQueryName = $"{CurrentDatabaseName}/{CurrentQueryNameWithoutDatabase}";
+
+            IsLoading = false;
+            IsSaveQueryPopupVisible = false;
+            ContentChanged = false;
+            Message = $"Query saved: {CurrentQueryNameWithoutDatabase}";
+
+            // Refresh list
+            LoadQueryList();
+        }
+        catch (Exception ex)
+        {
+            IsLoading = false;
+            IsSaveQueryPopupVisible = false;
+            Message = ex.GetBaseException().Message;
+            await _LogService.WriteToLogAsync(Message);
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentQueryName))
+        {
+            Message = "Must have a query selected to delete.";
+            return;
+        }
+
+        var (database, query) = DataService.ExtractDatabaseAndTable(CurrentQueryName);
+
+        string queriesFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "PersonalDataWarehouse",
+            "Databases",
+            database,
+            "KQLQueries");
+
+        string fileName = Path.Combine(queriesFolder, $"{query}.kql");
+        if (File.Exists(fileName))
+        {
+            File.Delete(fileName);
+        }
+
+        Message = $"{query} deleted!";
+        ShowDeleteConfirmation = false;
+        CurrentQueryName = string.Empty;
+
+        LoadQueryList();
+
+        if (QueryList.Count > 0)
+        {
+            CurrentQueryName = QueryList.First();
+            await LoadQueryAsync(CurrentQueryName);
+        }
+        else
+        {
+            CurrentScript = SampleKql;
+            await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
+        }
+    }
+
+    // -----------------------------------------
+    // Undo/Redo
+    // -----------------------------------------
+
+    private async Task Undo()
+    {
+        if (CanUndo)
+        {
+            var current = await MonacoCodeEditor.GetCodeAsync();
+            redoStack.Push(current);
+            CurrentScript = undoStack.Pop();
+            await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
+        }
+    }
+
+    private async Task Redo()
+    {
+        if (CanRedo)
+        {
+            var current = await MonacoCodeEditor.GetCodeAsync();
+            undoStack.Push(current);
+            CurrentScript = redoStack.Pop();
+            await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
+        }
+    }
+
+    // -----------------------------------------
+    // Execute KQL
+    // -----------------------------------------
+
+    private async Task Execute()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(CurrentQueryName))
+            {
+                // Force user to name and save the query first
+                IsSaveQueryPopupVisible = true;
+                return;
+            }
+
+            if (CurrentSelectedTableWizard == "*Select DataSource*")
+            {
+                Message = "Must select a DataSource.";
+                return;
+            }
+
+            // Separate the view name from the database
+            var (QueryDatabase, QueryName) = DataService.ExtractDatabaseAndTable(CurrentQueryName);
+
+            CurrentQueryNameWithoutDatabase = QueryName;
+
+            // Get latest code
+            CurrentScript = await MonacoCodeEditor.GetCodeAsync();
+
+            // Show output loading
+            IsOutputLoading = true;
+            StateHasChanged();
+
+            IEnumerable<IDictionary<string, object>> DataSourceData = new List<IDictionary<string, object>>();
+            Dataloader dataloader = new Dataloader();
+            string DataName = "";
+
+            // Load the data based on the CurrentSelectedTableWizard type
+            if (CurrentSelectedTableWizard.StartsWith("Table:"))
+            {
+                string TableWizardName = CurrentSelectedTableWizard.Substring(7);
+
+                // Separate the table name from the database
+                var (Database, TableName) = DataService.ExtractDatabaseAndTable(TableWizardName);
+
+                // Get the data from the Parquet file
+                DataSourceData = await dataloader.LoadParquet(Database, TableName);
+                DataName = TableName;
+            }
+            else if (CurrentSelectedTableWizard.StartsWith("View:"))
+            {
+                string TableWizardName = CurrentSelectedTableWizard.Substring(6);
+
+                // Separate the view name from the database
+                var (Database, ViewName) = DataService.ExtractDatabaseAndTable(TableWizardName);
+
+                // Get the data from the View file
+                DataSourceData = await dataloader.LoadView(Database, ViewName);
+                DataName = ViewName;
+            }
+            //transform to ordered dictionaries to make import easier
+            var orderedData = DataSourceData.Select(ToOrdered).ToArray();
+            var tableSource = TableBuilder.FromOrderedDictionarySet(DataName, orderedData)
+                .ToTableSource();
+            //auto infer any string columns (columns which are already typed will be skipped)
+            //this is generally safe to do but can lead to unwanted inference, for example in
+            //a column where you have strings that look like numbers but you actually want to keep them as strings
+            //for some reason so you might want a more sophisticated policy in future.
+            tableSource = TableBuilder.AutoInferColumnTypes(tableSource, new NullConsole());
+
+            kustoContext.AddTable(tableSource);
+
+            var result = await kustoContext.RunQuery(CurrentScript);
+            var renderer = new KustoResultRenderer(new KustoSettingsProvider());
+            table = new MarkupString(renderer.RenderToHtml(result));
+
+            IsOutputLoading = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            IsOutputLoading = false;
+            Message = ex.GetBaseException().Message;
+            await _LogService.WriteToLogAsync(Message);
+            StateHasChanged();
+        }
+    }
+
+    private OrderedDictionary ToOrdered(IDictionary<string, object> dict)
+    {
+        var o = new OrderedDictionary();
+        foreach (var key in dict.Keys.OrderBy(k => k))
+        {
+            o[key] = dict[key];
+        }
+
+        return o;
+    }
+
+    // -----------------------------------------
+    // New Script / Reset
+    // -----------------------------------------
+
+    private async Task NewScript()
+    {
+        var current = await MonacoCodeEditor.GetCodeAsync();
+        if (!string.IsNullOrWhiteSpace(current))
+        {
+            undoStack.Push(current);
+        }
+
+        if (CurrentSelectedTableWizard == "*Select DataSource*")
+        {
+            CurrentScript = SampleKql;
+        }
+        else
+        {
+            if (CurrentSelectedTableWizard.StartsWith("Table:"))
+            {
+                string TableWizardName = CurrentSelectedTableWizard.Substring(7);
+
+                // Separate the table name from the database
+                var (Database, TableName) = DataService.ExtractDatabaseAndTable(TableWizardName);
+
+                CurrentScript = SampleKql.Replace("<TableName>", TableName);
+            }
+            else if (CurrentSelectedTableWizard.StartsWith("View:"))
+            {
+                string TableWizardName = CurrentSelectedTableWizard.Substring(6);
+
+                // Separate the view name from the database
+                var (Database, ViewName) = DataService.ExtractDatabaseAndTable(TableWizardName);
+
+                CurrentScript = SampleKql.Replace("<TableName>", ViewName);
+            }
+        }
+
+        CurrentQueryName = "";
+        await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
+    }
+
+    private async Task Reset()
+    {
+        CurrentScript = SampleKql;
+        await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
+
+        if (QueryList.Count > 0)
+        {
+            CurrentQueryName = QueryList.First();
+            await LoadQueryAsync(CurrentQueryName);
+        }
+    }
+
+    // -----------------------------------------
+    // AI Prompt
+    // -----------------------------------------
+
+    private async Task AIbtn()
+    {
+        try
+        {
+            // Basic check: if no AI key is set, alert user
+            string apiKey = await SecureStorage.Default.GetAsync("AIApiKey") ?? "";
+            if (string.IsNullOrEmpty(apiKey) &&
+               ((SettingsService.Settings.ApplicationSettings.AIType == "OpenAI") ||
+                (SettingsService.Settings.ApplicationSettings.AIType == "Azure OpenAI")))
+            {
+                Message = "Please set up AI in Settings";
+                return;
+            }
+
+            if ((SettingsService.Settings.ApplicationSettings.AIType == "LM Studio" ||
+                 SettingsService.Settings.ApplicationSettings.AIType == "Ollma") &&
+                string.IsNullOrEmpty(SettingsService.Settings.ApplicationSettings.Endpoint))
+            {
+                Message = "Please set up AI in Settings";
+                return;
+            }
+
+            // Grab current code
+            CurrentScript = await MonacoCodeEditor.GetCodeAsync();
+
+            if (!string.IsNullOrEmpty(CurrentScript))
+            {
+                undoStack.Push(CurrentScript);
+            }
+
+            IsAILoading = true;
+            StateHasChanged();
+
+            // Get Table Schema
+            string schema = "";
+            var sb = new StringBuilder();
+
+            foreach (var table in kustoContext.Tables())
+            {
+                sb.AppendLine($"The table named '{table.Name}' has the following columns");
+
+                var cols = table.ColumnNames.Zip(table.Type.Columns)
+                    .Select(z => $"  {z.First} is of type {z.Second.Type.Name}")
+                    .ToArray();
+
+                foreach (var column in cols)
+                {
+                    sb.AppendLine(column);
+                }
+
+                schema = sb.ToString();
+            }
+
+            string promptTemplatePath = Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                "Templates",
+                "KqlAITemplate.txt");
+
+            string template = File.ReadAllText(promptTemplatePath);
+
+            string aiRequest = template
+                .Replace("## CURRENT SCHEMA ##", schema)
+                .Replace("## CURRENT KQL ##", CurrentScript)
+                .Replace("## USER REQUEST ##", AIMessage);
+
+            var aiResponse = await OrchestratorMethods.CallOpenAIAsync(SettingsService, apiKey, aiRequest);
+
+            IsAILoading = false;
+            ShowAI = false;
+
+            if (!string.IsNullOrEmpty(aiResponse.Error))
+            {
+                Message = aiResponse.Error;
+                return;
+            }
+
+            // Insert AI-generated KQL
+            await MonacoCodeEditor.UpdateCodeAsync(aiResponse.Response);
+        }
+        catch (Exception ex)
+        {
+            Message = ex.GetBaseException().Message;
+            await _LogService.WriteToLogAsync(Message);
+        }
+        finally
+        {
+            IsAILoading = false;
+        }
+    }
+
+    private void OpenAIPopup()
+    {
+        AIMessage = "";
+        ShowAI = true;
+    }
+
+    private void CloseAIPopup()
+    {
+        ShowAI = false;
+        Message = "";
+    }
+
+    // -----------------------------------------
+    // Other Popup Close Methods
+    // -----------------------------------------
+
+    private void CloseSaveQueryPopup()
+    {
+        IsSaveQueryPopupVisible = false;
+    }
+
+    private void CloseMessagePopup()
+    {
+        Message = "";
+    }
+
+    private void DeleteConfirmation()
+    {
+        ShowDeleteConfirmation = true;
+    }
+
+    private void CloseDeleteConfirmationPopup()
+    {
+        ShowDeleteConfirmation = false;
+    }
+
+    // -----------------------------------------
+    // Internal Data Structure
+    // -----------------------------------------
+
+    public class DataParameters
+    {
+        public IEnumerable<IDictionary<string, object>> data { get; set; }
+        public Dictionary<string, Type> columns { get; set; }
+    }
+}

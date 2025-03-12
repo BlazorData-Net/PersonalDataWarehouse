@@ -1,0 +1,33 @@
+﻿@code {
+    [Parameter] public EventCallback Close { get; set; }
+}
+
+<div class="modal fade show" style="display: block;" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="window glass active">
+                <div class="title-bar">
+                    <div class="title-bar-text">Primary Key Warning</div>
+                    <div class="title-bar-controls">
+                        <button aria-label="Close" @onclick="() => Close.InvokeAsync()"></button>
+                    </div>
+                </div>
+                <div class="window-body has-space">
+                    <table class="form-group" cellpadding="4" cellspacing="4">
+                        <tbody>
+                            <tr>
+                                <td>
+                                    <label style="font-weight: bold;">Table has no Primary Key - Saving will be disabled</label>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="window-body modal-footer d-flex justify-content-center">
+                    <button type="button" @onclick="() => Close.InvokeAsync()">Ok</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal-backdrop fade show"></div>

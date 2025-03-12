@@ -1,0 +1,276 @@
+﻿@page "/settingspage"
+@using Newtonsoft.Json;
+@using PersonalDataWarehouse.AI
+@using PersonalDataWarehouse.Model
+@using PersonalDataWarehouse.Services
+@inherits OwningComponentBase
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+@inject SettingsService SettingsService
+@inject IJSRuntime JSRuntime
+@inject LogService _LogService
+
+<h4>Settings</h4>
+<br />
+<div class="tabs-container">
+    <div class="tab-item active" onclick="showTab(this, 'database-tab')">Database Management</div>
+    <div class="tab-item" onclick="showTab(this, 'ai-tab')">AI</div>
+    <div class="tab-item" onclick="showTab(this, 'logs-tab')">Logs</div>
+</div>
+
+<div id="database-tab" class="tab-content active">
+    <DatabaseManagementPage />
+</div>
+<div id="ai-tab" class="tab-content">
+    <div>
+        <div>
+            <div style="width:1000px">
+                <!-- AI Service Type -->
+                <div>
+                    <label for="aiType"><b>AI Service Type:</b></label><br />
+                    <InputSelect id="aiType" @bind-Value="AIType" class="form-control select-width">
+                        @foreach (var type in colAITypes)
+                        {
+                            <option value="@type">@type</option>
+                        }
+                    </InputSelect>
+                </div>
+                <br />
+                @if ((AIType == "OpenAI") || (AIType == "Azure OpenAI"))
+                {
+                    <div class="position-relative">
+                        <label for="apiKey"><b>API Key:</b></label><br />
+                        <div class="input-group">
+                            <button type="button" style="height:20px" @onclick="ToggleApiKeyVisibility">
+                                <i class="material-icons">@(ShowApiKey ? "visibility_off" : "visibility")</i>
+                            </button>&nbsp;
+                            <InputText id="apiKey" @bind-Value="ApiKey"
+                                       class="form-control input-width"
+                                       type="@(ShowApiKey ? "text" : "password")"
+                                       @oninput="HandleApiKeyChange" />
+                        </div>
+                    </div>
+                    <br />
+                }
+                @if (AIType == "OpenAI")
+                {
+                    <div>
+                        <label for="azureModel"><b>OpenAI Model:</b></label><br />
+                        <InputText id="azureModel" @bind-Value="AIModel"
+                                   class="form-control input-width" />
+                    </div>
+                }
+                else if (AIType == "Azure OpenAI")
+                {
+                    <!-- Azure OpenAI Model Deployment Name -->
+                    <div>
+                        <label for="azureModel"><b>Azure OpenAI Model Deployment Name:</b></label><br />
+                        <InputText id="azureModel" @bind-Value="AIModel"
+                                   class="form-control input-width" />
+                    </div>
+                    <br />
+                    <!-- Azure OpenAI Endpoint -->
+                    <div>
+                        <label for="endpoint"><b>Azure OpenAI Endpoint:</b></label><br />
+                        <InputText id="endpoint" @bind-Value="Endpoint"
+                                   class="form-control input-width" />
+                    </div>
+                }
+                else if ((AIType == "LM Studio") || (AIType == "Ollma"))
+                {
+                    <!-- Local LLM Endpoint -->
+                    <div>
+                        <label for="endpoint"><b>Endpoint:</b></label><br />
+                        <InputText id="endpoint" @bind-Value="Endpoint"
+                                   class="form-control input-width" />
+                    </div>
+                    <br />
+                    <!-- Local LLM Model -->
+                    <div>
+                        <label for="localModel"><b>Model Name:</b></label><br />
+                        <InputText id="localModel" @bind-Value="AIModel"
+                                   class="form-control input-width" />
+                    </div>
+                }
+                <br />
+                <div class="mt-md">
+                    @if (!IsSettingsEntered)
+                    {
+                        <!-- Show a 'Get Key' link only for OpenAI/Azure. -->
+                        @if (AIType == "OpenAI" || AIType == "Azure OpenAI")
+                        {
+                            <button type="button"
+                                    @onclick="OpenAIKeyLink"
+                                    class="btn-wide">
+                                Get @AIType API Key
+                            </button>
+                        }
+                    }
+                    else
+                    {
+                        <button type="button"
+                                @onclick="SettingsSave"
+                                class="btn-wide">
+                            Save
+                        </button>
+                    }
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+<div id="logs-tab" class="tab-content">
+    <Logs></Logs>
+</div>
+
+@code {
+    // Services
+    private OrchestratorMethods OrchestratorMethods;
+
+    // Fields
+    private bool IsSettingsEntered = false;
+    private bool ShowApiKey { get; set; } = false;
+
+    // Default Values
+    private string ApiKey = "";
+    private string AIModel = "gpt-4o";
+    private string AIType = "OpenAI";
+    private string Endpoint = "";
+    private string AIEmbeddingModel = "";
+    private string ApiVersion = "";
+
+    // Collections
+    private readonly List<string> colAITypes = new()
+    {
+        "OpenAI",
+        "Azure OpenAI",
+        "LM Studio",
+        "Ollma"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        SettingsService.LoadSettings();
+
+        OrchestratorMethods = (OrchestratorMethods)ScopedServices.GetService(typeof(OrchestratorMethods));
+
+        // Get APIKey from secure settings
+        ApiKey = await SecureStorage.Default.GetAsync("AIApiKey") ?? ""; 
+
+        Endpoint = SettingsService.Settings.ApplicationSettings.Endpoint;
+        ApiVersion = SettingsService.Settings.ApplicationSettings.ApiVersion;
+        AIModel = SettingsService.Settings.ApplicationSettings.AIModel;
+        AIType = SettingsService.Settings.ApplicationSettings.AIType;
+
+        if (ApiKey.Length > 1)
+        {
+            IsSettingsEntered = true;
+        }
+        else
+        {
+            IsSettingsEntered = false;
+        }
+    }
+
+    private void HandleApiKeyChange(ChangeEventArgs e)
+    {
+        // Mark settings as entered if the user starts typing an API key
+        ApiKey = e.Value?.ToString() ?? string.Empty;
+
+        IsSettingsEntered = !string.IsNullOrWhiteSpace(ApiKey);
+    }
+
+    private void ToggleApiKeyVisibility()
+    {
+        ShowApiKey = !ShowApiKey;
+    }
+
+    private void APIKeyDetection(KeyboardEventArgs args)
+    {
+        IsSettingsEntered = true;
+    }
+
+    private async Task OpenAIKeyLink()
+    {
+        if (AIType == "OpenAI")
+        {
+            await JSRuntime.InvokeVoidAsync("open", "https://platform.openai.com/account/api-keys", "_blank");
+        }
+        else // "Azure OpenAI"
+        {
+            await JSRuntime.InvokeVoidAsync("open",
+                "https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/create-resource?pivots=web-portal", "_blank");
+        }
+    }
+
+    private async Task SettingsSave()
+    {
+        try
+        {
+            if ((AIType == "OpenAI") && (!ApiKey.StartsWith("sk-")))
+            {
+                NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Error,
+                        Summary = "Error",
+                        Detail = "Invalid API Key - must start with: sk-",
+                        Duration = 4000
+                    });
+
+                return;
+            }
+
+            if (ApiKey.Length < 5)
+            {
+                NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Error,
+                        Summary = "Error",
+                        Detail = "API Key is required",
+                        Duration = 4000
+                    });
+
+                return;
+            }            
+
+            // Save API Key
+            await SecureStorage.Default.SetAsync("AIApiKey", ApiKey);
+
+            // Update Settings
+            SettingsService settingsService = new SettingsService();
+
+            SettingsService.ApplicationSettings applicationSettings = settingsService.Settings.ApplicationSettings;
+
+            applicationSettings.Endpoint = Endpoint;
+            applicationSettings.AIModel = AIModel;
+            applicationSettings.AIType = AIType;
+            applicationSettings.AIEmbeddingModel = AIEmbeddingModel;
+
+            await settingsService.UpdateSettingsAsync(applicationSettings);
+
+            // Test API Key
+            var result = await OrchestratorMethods.TestAccessAsync(AIType, AIModel, ApiKey, Endpoint, AIEmbeddingModel);
+
+            NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Success",
+                    Detail = "Saved",
+                    Duration = 4000
+                });
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Error",
+                    Detail = ex.Message,
+                    Duration = 8000
+                });
+
+            await _LogService.WriteToLogAsync($"SettingsSave exception: {ex.GetBaseException().ToString()}");
+        }
+    }
+}
