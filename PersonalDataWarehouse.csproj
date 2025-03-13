@@ -45,6 +45,13 @@
 
 	<PropertyGroup>
 		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net9.0-windows10.0.19041.0</TargetFrameworks>
+		<Title>Personal Data Warehouse</Title>
+		<Description>This application allows you to import your data, transform it using AI to perform calculations, and report and export the results.This application allows you to import your data, transform it using AI to perform calculations, and report and export the results.</Description>
+		<Copyright>2025</Copyright>
+		<PackageProjectUrl>https://blazordata.net/</PackageProjectUrl>
+		<PackageIcon>BlazorDataDotNetLogo.ico</PackageIcon>
+		<RepositoryUrl>https://github.com/BlazorData-Net/PersonalDataWarehouse</RepositoryUrl>
+		<PackageTags>AI;Excel;Parquet;Fabric;LLM</PackageTags>
 	</PropertyGroup>
 
     <ItemGroup>
@@ -144,6 +151,13 @@
 	  <Content Include="Templates\View.txt">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </Content>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Include="..\..\..\..\..\..\!MichaelWashington\!BlazorDataDotNet\logos\BlazorDataDotNetLogo.ico">
+	    <Pack>True</Pack>
+	    <PackagePath>\</PackagePath>
+	  </None>
 	</ItemGroup>
 
 </Project>
