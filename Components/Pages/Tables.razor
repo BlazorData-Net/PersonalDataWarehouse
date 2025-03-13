@@ -62,33 +62,36 @@ else
             <button @onclick="ImportData" title="New" style="background:none;border:none;">
                 <i class="material-icons" style="color:black;">note_add</i>
             </button>
-            <button @onclick="Save" style="background:none;border:none;">
-                <i class="material-icons" style="color:black;">save</i>
-            </button>
-            <button @onclick="() => sheet.Commands.Undo()" title="Undo" style="background:none;border:none;">
-                <i class="material-icons" style="color:black;">undo</i>
-            </button>
-            <button @onclick="() => sheet.Commands.Redo()" title="Redo" style="background:none;border:none;">
-                <i class="material-icons" style="color:black;">redo</i>
-            </button>
-            <button @onclick="InsertRowAfterSelection" title="Insert Row" style="background:none;border:none;">
-                <i class="material-icons" style="color:black;">add</i>
-            </button>
-            <button @onclick="RemoveRow" title="Delete Row" style="background:none;border:none;">
-                <i class="material-icons" style="color:black;">remove</i>
-            </button>
-            <button @onclick="Export" title="Export" style="background:none;border:none;">
-                <i class="material-icons" style="color:black;">file_download</i>
-            </button>
-            <button @onclick="DeleteConfirmation" title="Delete" style="background:none;border:none;">
-                <i class="material-icons" style="color:black;">delete</i>
-            </button>
+            @if (sheet.NumRows > 0)
+            {
+                <button @onclick="Save" style="background:none;border:none;">
+                    <i class="material-icons" style="color:black;">save</i>
+                </button>
+                <button @onclick="() => sheet.Commands.Undo()" title="Undo" style="background:none;border:none;">
+                    <i class="material-icons" style="color:black;">undo</i>
+                </button>
+                <button @onclick="() => sheet.Commands.Redo()" title="Redo" style="background:none;border:none;">
+                    <i class="material-icons" style="color:black;">redo</i>
+                </button>
+                <button @onclick="InsertRowAfterSelection" title="Insert Row" style="background:none;border:none;">
+                    <i class="material-icons" style="color:black;">add</i>
+                </button>
+                <button @onclick="RemoveRow" title="Delete Row" style="background:none;border:none;">
+                    <i class="material-icons" style="color:black;">remove</i>
+                </button>
+                <button @onclick="Export" title="Export" style="background:none;border:none;">
+                    <i class="material-icons" style="color:black;">file_download</i>
+                </button>
+                <button @onclick="DeleteConfirmation" title="Delete" style="background:none;border:none;">
+                    <i class="material-icons" style="color:black;">delete</i>
+                </button>
+            }
         </div>
     </div>
     <div style="@(GridVisibility())">
         <Datasheet Sheet="@sheet" MenuOptions=_sheetMenuOpt />
     </div>
-    @if(isDontShowDataSheet)
+    @if (isDontShowDataSheet)
     {
         <div style="text-align:center;">
             <h4>Table display was cancelled.</h4>
@@ -376,7 +379,7 @@ else
 
     private string GridVisibility()
     {
-        if(sheet != null)
+        if (sheet != null)
         {
             return sheet.NumRows > 0 ? "display:block;" : "display:none;";
         }
