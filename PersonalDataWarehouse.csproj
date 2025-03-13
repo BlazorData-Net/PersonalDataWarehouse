@@ -52,6 +52,14 @@
 		<PackageIcon>BlazorDataDotNetLogo.ico</PackageIcon>
 		<RepositoryUrl>https://github.com/BlazorData-Net/PersonalDataWarehouse</RepositoryUrl>
 		<PackageTags>AI;Excel;Parquet;Fabric;LLM</PackageTags>
+		<GenerateAppInstallerFile>False</GenerateAppInstallerFile>
+		<AppxPackageSigningEnabled>False</AppxPackageSigningEnabled>
+		<AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
+		<AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
+		<AppxSymbolPackageEnabled>True</AppxSymbolPackageEnabled>
+		<GenerateTestArtifacts>True</GenerateTestArtifacts>
+		<GenerateTemporaryStoreCertificate>True</GenerateTemporaryStoreCertificate>
+		<HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
 	</PropertyGroup>
 
     <ItemGroup>
