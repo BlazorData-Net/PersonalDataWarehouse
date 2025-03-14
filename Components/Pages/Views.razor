@@ -1263,14 +1263,19 @@ else
 
             var AIResponse = await OrchestratorMethods.CallOpenAIAsync(SettingsService, ApiKey, AIRequest);
 
+            await _LogService.WriteToLogAsync($"View:AIbtn - {AIRequest}");
+
             IsAILoading = false;
             ShowAI = false;
 
             if (AIResponse.Error != "")
             {
                 Message = AIResponse.Error;
+                await _LogService.WriteToLogAsync($"View:AIbtn:Response:Error - {AIResponse.Error}");
                 return;
             }
+
+            await _LogService.WriteToLogAsync($"View:AIbtn:Response - {AIResponse.Response}");
 
             // Update the code in the editor
             await MonacoCodeEditor.UpdateCodeAsync(AIResponse.Response);
