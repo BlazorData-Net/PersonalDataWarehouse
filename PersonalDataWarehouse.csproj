@@ -60,6 +60,7 @@
 		<GenerateTestArtifacts>True</GenerateTestArtifacts>
 		<GenerateTemporaryStoreCertificate>True</GenerateTemporaryStoreCertificate>
 		<HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
+		<AssemblyName>PersonalDataWarehouse</AssemblyName>
 	</PropertyGroup>
 
     <ItemGroup>
