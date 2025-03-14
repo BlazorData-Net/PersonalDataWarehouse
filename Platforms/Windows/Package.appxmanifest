@@ -6,13 +6,13 @@
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap rescap">
 
-  <Identity Name="41860Defwebs.com.3496650F4D0E8" Publisher="CN=1B36D735-B652-43DB-8420-7E444D9AB5F0" Version="1.1.0.0" />
+  <Identity Name="41860Defwebs.com.3496650F4D0E8" Publisher="CN=1B36D735-B652-43DB-8420-7E444D9AB5F0" Version="1.1.3.0" />
 
   <mp:PhoneIdentity PhoneProductId="cfdeec4e-22b8-4b81-901a-afed696dc8e8" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
     <DisplayName>Personal Data Warehouse</DisplayName>
-    <PublisherDisplayName>BlazorData.net</PublisherDisplayName>
+    <PublisherDisplayName>AIStoryBuilders.com</PublisherDisplayName>
     <Logo>$placeholder$.png</Logo>
   </Properties>
 
