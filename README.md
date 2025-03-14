@@ -9,7 +9,7 @@ This application enables you to create your own Personal Data Warehouse by:
   - Feeding the structure of your data, as well as your data questions and transformations, to the AI of your choice, either in the cloud or running on your local computer
     
 ## Benefits
-Typically, a data warehouse operates in the cloud. When you access your data—even just to view it—you incur compute costs (in other words, you pay). But you already have a computer with a CPU and memory capable of handling most tasks. Wouldn’t it be great to view, edit, and transform your data right on your own machine? Now you can!
+Typically, a data warehouse operates in the cloud. When you access your dataâ€”even just to view itâ€”you incur compute costs (in other words, you pay). But you already have a computer with a CPU and memory capable of handling most tasks. Wouldnâ€™t it be great to view, edit, and transform your data right on your own machine? Now you can!
 
 ## Introducing Your Local Data Processing Tool
 This tool allows you to:
@@ -41,3 +41,5 @@ https://github.com/user-attachments/assets/3b1de39b-8176-4d08-9fdc-55294870e33b
 ![image](https://github.com/user-attachments/assets/9c51354b-7f69-45f6-9e73-ad79df4edb53)
 
 ![Image 014](https://github.com/user-attachments/assets/63d0b724-66b8-4d5d-bde5-01edefd05421)
+
+![image](https://github.com/user-attachments/assets/f8bb6d1f-d066-4a7a-a841-d463bad88d0c)
