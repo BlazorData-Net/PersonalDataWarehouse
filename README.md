@@ -42,4 +42,10 @@ https://github.com/user-attachments/assets/3b1de39b-8176-4d08-9fdc-55294870e33b
 
 ![Image 014](https://github.com/user-attachments/assets/63d0b724-66b8-4d5d-bde5-01edefd05421)
 
+## Example Use Case: Display differences in two tables
+
 ![image](https://github.com/user-attachments/assets/f8bb6d1f-d066-4a7a-a841-d463bad88d0c)
+
+### Code created by the AI to display the differences
+
+![coderequired](https://github.com/user-attachments/assets/f0ff7c35-653a-4266-bea8-c61d8e373cca)
