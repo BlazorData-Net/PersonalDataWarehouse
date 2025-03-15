@@ -455,6 +455,7 @@ else
                     }
                 });
 
+            dataSet = new DataSet();
             dataSet = result;
         }
 
@@ -463,6 +464,7 @@ else
         {
             var Table = await ParquetReader.ReadTableFromStreamAsync(memoryStream);
 
+            dataSet = new DataSet();
             dataSet = await DataService.ConvertParquetTableToDataSetAsync(Table, CurrentFileName);
         }
 
@@ -571,6 +573,9 @@ else
             column => column.DataType.Name
         );
 
+        // Cleat sheet to release memory
+        sheet = new Sheet(0, 0);
+
         // Create sheet with the number of columns
         sheet = new Sheet(CurrentDataTable.Rows.Count, TableColumns.Count);
 
@@ -608,6 +613,9 @@ else
         // Turn on history
         sheet.EndBatchUpdates();
         sheet.Commands.ResumeHistory();
+
+        // clear dataset to release memory
+        dataSet = null;
     }
 
     #region Datasheet Events
