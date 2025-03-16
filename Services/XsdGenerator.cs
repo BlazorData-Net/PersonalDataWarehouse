@@ -200,24 +200,85 @@ public static class XsdGenerator
                         typeName.Value = "System.Int32";
                     }
                 }
-
-                // For the "CurrentPayRate" field: change its type to System.Double
-                var currentPayField = fields.Elements(ns + "Field")
-                                            .FirstOrDefault(f => (string)f.Attribute("Name") == "CurrentPayRate");
-                if (currentPayField != null)
-                {
-                    var typeName = currentPayField.Element(rd + "TypeName");
-                    if (typeName != null)
-                    {
-                        typeName.Value = "System.Double";
-                    }
-                }
             }
         }
 
         // Return the modified XML as a string (including the XML declaration)
         return doc.Declaration + Environment.NewLine + doc.ToString();
     }
+
+    public static string TransformReportToRemoteConnection(string reportXml, string DatabaseName)
+    {
+        // Define XML namespaces used in the report
+        XNamespace ns = "http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition";
+        XNamespace rd = "http://schemas.microsoft.com/SQLServer/reporting/reportdesigner";
+        XNamespace am = "http://schemas.microsoft.com/sqlserver/reporting/authoringmetadata";
+
+        // Remove BOM if present
+        reportXml = reportXml.TrimStart('\uFEFF', '\u200B');
+
+        // Load the report XML
+        XDocument doc = XDocument.Parse(reportXml);
+
+        string TableName = "";
+
+        // Attempt to find an element named "TableName" within the report designer namespace
+        XElement tableNameElement = doc.Descendants(rd + "TableName").FirstOrDefault();
+        if (tableNameElement != null)
+        {
+            TableName = tableNameElement.Value;
+        }
+
+        // --- Update the DataSources section ---
+        var dataSource = doc.Root.Element(ns + "DataSources")?
+                                 .Element(ns + "DataSource");
+
+        if (dataSource != null)
+        {
+            var connectionProperties = dataSource.Element(ns + "ConnectionProperties");
+            if (connectionProperties != null)
+            {
+                // Change the DataProvider from "System.Data.DataSet" to "XML"
+                var dataProvider = connectionProperties.Element(ns + "DataProvider");
+                if (dataProvider != null)
+                {
+                    dataProvider.Value = "XML";
+                }
+                // Change the ConnectString to the remote connection URL.
+                // Using a literal '&' so that it is encoded as '&amp;' in the output.
+                var connectString = connectionProperties.Element(ns + "ConnectString");
+                if (connectString != null)
+                {
+                    connectString.Value = $"http://localhost:5000/api/GetData?database={DatabaseName}&datasource={TableName}";
+                }
+            }
+        }
+
+        // --- Update the DataSets section ---
+        var dataSet = doc.Root.Element(ns + "DataSets")?
+                            .Element(ns + "DataSet");
+
+        if (dataSet != null)
+        {
+            // Update the Query/CommandText element to clear the value
+            var query = dataSet.Element(ns + "Query");
+            if (query != null)
+            {
+                var commandText = query.Element(ns + "CommandText");
+                if (commandText != null)
+                {
+                    commandText.Value = "";
+                }
+            }
+        }
+
+        // Return the modified XML as a string (including the XML declaration)
+        // If no declaration exists, supply one.
+        string declaration = doc.Declaration != null ? doc.Declaration.ToString() : "<?xml version=\"1.0\" encoding=\"utf-8\"?>";
+        return declaration + Environment.NewLine + doc.ToString();
+    }
+
+
 
     // Utility
 

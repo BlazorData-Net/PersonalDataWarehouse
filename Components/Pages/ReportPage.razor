@@ -1712,6 +1712,15 @@
                 // Convert the MemoryStream to a byte array
                 byte[] fileContent = stream.ToArray();
 
+                // Convert the report to make the data sorce point to http://localhost:5000
+                string CurrentImportReportContentsString = System.Text.Encoding.UTF8.GetString(fileContent);
+
+                // TransformReport Connection To LocalConnection
+                CurrentImportReportContentsString = XsdGenerator.TransformReportToRemoteConnection(CurrentImportReportContentsString, Database);
+
+                // Convert the string to bytes
+                fileContent = System.Text.Encoding.UTF8.GetBytes(CurrentImportReportContentsString);
+
                 // Write the content to the selected path
                 await File.WriteAllBytesAsync(fileSaverResult.Path, fileContent);
             }
