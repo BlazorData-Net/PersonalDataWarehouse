@@ -1,4 +1,4 @@
-### Note: In progress. Expected completion 4/1/2025
+### [Click here to download and install it from the Microsoft Store](https://apps.microsoft.com/detail/9P86KCCLLJV0?hl=en-us&gl=US&ocid=pdpshare)
 
 ## Overview
 Scam artists make a lot of promises about AI, often claiming it can do things it cannot, such as predicting the future. What AI is truly good at is calculating. This application allows you to import your data, transform it using AI to perform calculations, and report and export the results.
@@ -30,11 +30,7 @@ This tool allows you to:
     
 By doing the compute locally on your own computer, you avoid expensive cloud compute costs while enjoying the flexibility and control of your own system.
 
-https://github.com/user-attachments/assets/190f51b5-cbbf-4410-a689-8ea8d2b56d9b
-
-![PersonalDataWarehouseReportView](https://github.com/user-attachments/assets/9e5684a2-17cf-43c7-b774-0fcbcb7abb20)
-
-![ReportBuilderAnimation](https://github.com/user-attachments/assets/f0231477-ad4f-4d09-b13c-2faec2488aa1)
+![image](https://github.com/user-attachments/assets/0666d9a6-0da0-4780-9099-e919bb6fb839)
 
 ![image](https://github.com/user-attachments/assets/74238b49-7125-4861-a1e2-2f06c2d3710e)
 
