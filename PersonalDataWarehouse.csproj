@@ -65,7 +65,7 @@
 
     <ItemGroup>
         <!-- App Icon -->
-        <MauiIcon Include="Resources\AppIcon\blazordatadotnetlogo.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4">
+        <MauiIcon Include="Resources\AppIcon\blazordatadotnetlogo.svg" Color="#512BD4">
           <CopyToOutputDirectory></CopyToOutputDirectory>
         </MauiIcon>
 
