@@ -40,7 +40,7 @@
             @foreach (var table in TableList)
             {
                 <option value="@table"
-                        selected="@(table == CurrentTableName ? "selected" : null)">
+                selected="@(table == CurrentTableName ? "selected" : null)">
                     @table
                 </option>
             }
@@ -103,14 +103,14 @@ else
 @if (ShowConnectionDialog)
 {
     <DatabaseConnectionDialog ConnectionType="@ConnectionType"
-                              DatabaseName="@DatabaseName"
-                              DatabasePassword="@DatabasePassword"
-                              DatabaseUsername="@DatabaseUsername"
-                              ServerName="@ServerName"
-                              Close="CloseShowConnectionDialog"
-                              IntegratedSecurityDisplay="@IntegratedSecurityDisplay"
-                              ConfigurationType="ConfigurationType.DatabaseFull"
-                              OnSetConnection="SetDatabaseConnection" />
+    DatabaseName="@DatabaseName"
+    DatabasePassword="@DatabasePassword"
+    DatabaseUsername="@DatabaseUsername"
+    ServerName="@ServerName"
+    Close="CloseShowConnectionDialog"
+    IntegratedSecurityDisplay="@IntegratedSecurityDisplay"
+    ConfigurationType="ConfigurationType.DatabaseFull"
+    OnSetConnection="SetDatabaseConnection" />
 }
 
 @if (IsSaveTablePopupVisible)
@@ -137,7 +137,7 @@ else
                                     @foreach (var database in colAllDatabases)
                                     {
                                         <option value="@database"
-                                                selected="@(database == CurrentDatabaseName ? "selected" : null)">
+                                        selected="@(database == CurrentDatabaseName ? "selected" : null)">
                                             @database
                                         </option>
                                     }
@@ -215,8 +215,8 @@ else
                                 </button>
                                 <span style="margin: 0 10px;">Or</span>
                                 <InputFile @key="resetInputFileFlag"
-                                           OnChange="HandleFileSelectedAsync"
-                                           accept=".csv,.xls,.xlsx,.parquet" />
+                                OnChange="HandleFileSelectedAsync"
+                                accept=".csv,.xls,.xlsx,.parquet" />
                             </div>
                         </div>
                     </div>
@@ -673,65 +673,81 @@ else
 
     private async Task SaveParquetAsync()
     {
-        if (CurrentTableNameWithoutDatabase.Trim().Length == 0)
+        try
         {
-            Message = "Table Name is required.";
-            return;
+            if (CurrentTableNameWithoutDatabase.Trim().Length == 0)
+            {
+                Message = "Table Name is required.";
+                return;
+            }
+
+            // Remove spaces and special characters
+            string CleanedName = databaseService.RemoveSpacesSpecialCharacters(CurrentTableNameWithoutDatabase);
+
+            if (CleanedName != CurrentTableNameWithoutDatabase)
+            {
+                CurrentTableNameWithoutDatabase = CleanedName;
+                Message = $"Table Name will be {CurrentTableNameWithoutDatabase}";
+                return;
+            }
+
+            // Check for duplicates
+            if (DetectDuplicates(CurrentDatabaseName, CurrentTableNameWithoutDatabase))
+            {
+                Message = "A View or Report with this name already exists.";
+                return;
+            }
+
+            // Add the database name to the table name
+            CurrentTableNameWithoutDatabase = $"{CurrentDatabaseName}/{CurrentTableNameWithoutDatabase}";
+
+            IsLoadingSheet = true;
+            StateHasChanged();
+
+            // Convert sheet to datatable
+            ConvertSheetToDataTable();
+
+            // Set the CurrentTableName
+            CurrentTableName = CurrentTableNameWithoutDatabase;
+
+            // Convert to Parquet
+            DataService objDataService = new DataService();
+            await objDataService.WriteDataTableToParquetAsync(CurrentDataTable, CurrentTableName);
+
+            // Create C# class from DataTable
+            GenerateClassFromDataTable(CurrentDataTable, CurrentTableName);
+
+            // Set the CurrentDropdownTableName
+            CurrentDropdownTableName = CurrentTableName;
+
+            // Re-Load the TableList dropdown
+            await LoadTableListDropdownAsync();
+
+            // Toggle the flag to force a re-render of InputFile
+            // Clearing it if needed
+            resetInputFileFlag = !resetInputFileFlag;
+
+            IsLoadingSheet = false;
+            IsSaveTablePopupVisible = false;
+            LoadedDataIsUnsaved = false;
+            IsShowFileUpload = true;
+            StateHasChanged();
+
+            Message = $"{CurrentTableName} saved successfully.";
         }
-
-        // Remove spaces and special characters
-        string CleanedName = databaseService.RemoveSpacesSpecialCharacters(CurrentTableNameWithoutDatabase);
-
-        if (CleanedName != CurrentTableNameWithoutDatabase)
+        catch (Exception ex)
         {
-            CurrentTableNameWithoutDatabase = CleanedName;
-            Message = $"Table Name will be {CurrentTableNameWithoutDatabase}";
-            return;
+            Message = ex.GetBaseException().Message;
+
+            // Toggle the flag to force a re-render of InputFile
+            // Clearing it if needed
+            resetInputFileFlag = !resetInputFileFlag;
+
+            IsLoadingSheet = false;
+            IsSaveTablePopupVisible = false;
+            IsShowFileUpload = true;
+            StateHasChanged();
         }
-
-        // Check for duplicates
-        if (DetectDuplicates(CurrentDatabaseName, CurrentTableNameWithoutDatabase))
-        {
-            Message = "A View or Report with this name already exists.";
-            return;
-        }
-
-        // Add the database name to the table name
-        CurrentTableNameWithoutDatabase = $"{CurrentDatabaseName}/{CurrentTableNameWithoutDatabase}";
-
-        IsLoadingSheet = true;
-        StateHasChanged();
-
-        // Convert sheet to datatable
-        ConvertSheetToDataTable();
-
-        // Set the CurrentTableName
-        CurrentTableName = CurrentTableNameWithoutDatabase;
-
-        // Convert to Parquet
-        DataService objDataService = new DataService();
-        await objDataService.WriteDataTableToParquetAsync(CurrentDataTable, CurrentTableName);
-
-        // Create C# class from DataTable
-        GenerateClassFromDataTable(CurrentDataTable, CurrentTableName);
-
-        // Set the CurrentDropdownTableName
-        CurrentDropdownTableName = CurrentTableName;
-
-        // Re-Load the TableList dropdown
-        await LoadTableListDropdownAsync();
-
-        // Toggle the flag to force a re-render of InputFile
-        // Clearing it if needed
-        resetInputFileFlag = !resetInputFileFlag;
-
-        IsLoadingSheet = false;
-        IsSaveTablePopupVisible = false;
-        LoadedDataIsUnsaved = false;
-        IsShowFileUpload = true;
-        StateHasChanged();
-
-        Message = $"{CurrentTableName} saved successfully.";
     }
 
     // Delete
@@ -991,14 +1007,18 @@ else
         // Load the class using the contents in codeBuilder.ToString() and get its type
         var ClassType = XsdGenerator.GetTypeFromCode(codeBuilder.ToString(), DataService.FirstCharToUpper(Table));
 
-        // Step 1: Generate the schema string
-        string schemaString = XsdGenerator.GenerateSchemaForType(ClassType);
+        // If the class type is not null, generate the schema
+        if (ClassType != null)
+        {
+            // Step 1: Generate the schema string
+            string schemaString = XsdGenerator.GenerateSchemaForType(ClassType);
 
-        // Step 2: Save the file
-        String ReportsDataPath = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports/Data";
+            // Step 2: Save the file
+            String ReportsDataPath = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{Database}/Reports/Data";
 
-        filePath = Path.Combine(ReportsDataPath, $"{Table}Schemas.xsd");
-        File.WriteAllText(filePath, schemaString);
+            filePath = Path.Combine(ReportsDataPath, $"{Table}Schemas.xsd");
+            File.WriteAllText(filePath, schemaString);
+        }
     }
     #endregion
 

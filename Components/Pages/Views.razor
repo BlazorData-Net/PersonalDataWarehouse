@@ -104,12 +104,12 @@ else
             }
         </div>
         <CodeEditor @ref="@MonacoCodeEditor"
-                    Language="csharp"
-                    Code="@CurrentScript"
-                    MinHeight="500px"
-                    Width="90%"
-                    Margin="0px"
-                    OnCompletionsRequested="GetCompletionsAsync" />
+        Language="csharp"
+        Code="@CurrentScript"
+        MinHeight="500px"
+        Width="90%"
+        Margin="0px"
+        OnCompletionsRequested="GetCompletionsAsync" />
     </div>
     <br />
 }
@@ -135,15 +135,15 @@ else
                         else
                         {
                             <RadzenDataGrid Data="@objDataParameters.data"
-                                            ColumnWidth="200px"
-                                            AllowFiltering="false" AllowPaging="true" AllowSorting="false">
+                            ColumnWidth="200px"
+                            AllowFiltering="false" AllowPaging="true" AllowSorting="false">
                                 <Columns>
                                     @foreach (var column in objDataParameters.columns)
                                     {
                                         <RadzenDataGridColumn @key=@column.Key
-                                                              Title="@column.Key"
-                                                              Type="column.Value"
-                                                              Property="@PropertyAccess.GetDynamicPropertyExpression(column.Key, column.Value)">
+                                        Title="@column.Key"
+                                        Type="column.Value"
+                                        Property="@PropertyAccess.GetDynamicPropertyExpression(column.Key, column.Value)">
                                             <Template>
                                                 @context[@column.Key]
                                             </Template>
@@ -222,7 +222,7 @@ else
                                     @foreach (var database in colAllDatabases)
                                     {
                                         <option value="@database"
-                                                selected="@(database == CurrentDatabaseName ? "selected" : null)">
+                                        selected="@(database == CurrentDatabaseName ? "selected" : null)">
                                             @database
                                         </option>
                                     }
@@ -267,8 +267,8 @@ else
                         {
                             <div class="has-scrollbar" style="width: 100%; height: 110px; overflow: auto">
                                 <textarea @bind="AIMessage" maxlength="1000"
-                                          style="width: 100%; height: 100px; overflow: auto; resize: vertical;">
-                                                </textarea>
+                                style="width: 100%; height: 100px; overflow: auto; resize: vertical;">
+                                </textarea>
                             </div>
                             <br />
                             <button @onclick="AIbtn">Submit</button>
@@ -667,13 +667,17 @@ else
             // Get the Type for the class we want to generate the RDL for
             var ClassType = XsdGenerator.GetTypeFromCode(code, DataService.FirstCharToUpper(CurrentViewNameWithoutDatabase));
 
-            // Step 1: Generate the schema string
-            string schemaString = XsdGenerator.GenerateSchemaForType(ClassType);
+            // If the class type is not null, generate the schema
+            if (ClassType != null)
+            {
+                // Step 1: Generate the schema string
+                string schemaString = XsdGenerator.GenerateSchemaForType(ClassType);
 
-            // Step 3: Save the file
-            string DataPath = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{CurrentDatabaseName}/Reports/Data";
-            filePath = Path.Combine(DataPath, $"{CurrentViewNameWithoutDatabase}Schemas.xsd");
-            File.WriteAllText(filePath, schemaString);
+                // Step 3: Save the file
+                string DataPath = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{CurrentDatabaseName}/Reports/Data";
+                filePath = Path.Combine(DataPath, $"{CurrentViewNameWithoutDatabase}Schemas.xsd");
+                File.WriteAllText(filePath, schemaString);
+            }
 
             CurrentViewName = $"{CurrentDatabaseName}/{CurrentViewNameWithoutDatabase}";
 

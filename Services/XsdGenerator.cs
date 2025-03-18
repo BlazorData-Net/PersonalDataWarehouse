@@ -9,6 +9,7 @@ using System.Text;
 using System.Xml.Linq;
 using System.Data;
 using System.Text.RegularExpressions;
+using PersonalDataWarehouse.Model;
 
 public static class XsdGenerator
 {
@@ -332,11 +333,20 @@ public static class XsdGenerator
 
         if (!emitResult.Success)
         {
+            List<string> errors = new List<string>();
+
             foreach (var diagnostic in emitResult.Diagnostics)
             {
-                Console.WriteLine(diagnostic.ToString());
+                errors.Add(diagnostic.ToString());
             }
-            throw new InvalidOperationException("Compilation failed!");
+
+            // Write all the errors as a single log entry
+            var AllErrors = $"ERROR! - GetTypeFromCode - Code: {code} - Compilation Error(s): {string.Join(Environment.NewLine, errors)}";
+
+            LogService logService = new LogService();
+            logService.WriteToLog(AllErrors);
+
+            return null;
         }
 
         ms.Seek(0, SeekOrigin.Begin);

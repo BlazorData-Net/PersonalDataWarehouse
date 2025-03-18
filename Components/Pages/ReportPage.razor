@@ -33,7 +33,7 @@
             @foreach (var Report in ReportList)
             {
                 <option value="@Report"
-                selected="@(Report == CurrentReportName ? "selected" : null)">
+                        selected="@(Report == CurrentReportName ? "selected" : null)">
                     @Report
                 </option>
             }
@@ -133,7 +133,7 @@
                                 </button>
                             </div>
                             <div @ref="pdfContainer" id="pdf-container"
-                            style="border: 0px solid #ccc; width: 100%; height: 800px;"></div>
+                                 style="border: 0px solid #ccc; width: 100%; height: 800px;"></div>
                         </div>
 
                     </div>
@@ -304,8 +304,8 @@
                         {
                             <div class="has-scrollbar" style="width: 100%; height: 110px; overflow: auto">
                                 <textarea @bind="AIMessage" maxlength="1000"
-                                style="width: 100%; height: 100px; overflow: auto; resize: vertical;">
-                                </textarea>
+                                          style="width: 100%; height: 100px; overflow: auto; resize: vertical;">
+                                        </textarea>
                             </div>
                             <select @bind="AutoFixOption">
                                 <option value="true" selected="@(AutoFixOption == "true" ? "selected" : null)">Auto-Fix any errors</option>
@@ -673,53 +673,65 @@
             return;
         }
 
-        // CurrentObjectName is everything after the "/" in CurrentSelectedTableWizard
-        string CurrentObjectDataName = CurrentSelectedTableWizard.Substring(CurrentSelectedTableWizard.IndexOf("/") + 1);
-
-        String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{CurrentDatabaseName}/Reports";
-        var fileName = Path.Combine(ReportsFolder, $"{CurrentReportNameWithoutDatabase}.rdlc");
-
-        // Load the code for the class we want to generate the RDL for
-        String ClassesFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{CurrentDatabaseName}/Classes";
-        var codeFile = Path.Combine(ClassesFolder, $"{CurrentObjectDataName}.cs");
-
-        if (!System.IO.File.Exists(codeFile))
+        try
         {
-            Message = $"{codeFile} Code file not found.";
+
+            // CurrentObjectName is everything after the "/" in CurrentSelectedTableWizard
+            string CurrentObjectDataName = CurrentSelectedTableWizard.Substring(CurrentSelectedTableWizard.IndexOf("/") + 1);
+
+            String ReportsFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{CurrentDatabaseName}/Reports";
+            var fileName = Path.Combine(ReportsFolder, $"{CurrentReportNameWithoutDatabase}.rdlc");
+
+            // Load the code for the class we want to generate the RDL for
+            String ClassesFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases/{CurrentDatabaseName}/Classes";
+            var codeFile = Path.Combine(ClassesFolder, $"{CurrentObjectDataName}.cs");
+
+            if (!System.IO.File.Exists(codeFile))
+            {
+                Message = $"{codeFile} Code file not found.";
+                _LogService.WriteToLog(Message);
+                return;
+            }
+
+            // Load the code from the file
+            var code = System.IO.File.ReadAllText(codeFile);
+
+            // Get the Type for the class we want to generate the RDL for
+            var ClassType = XsdGenerator.GetTypeFromCode(code, DataService.FirstCharToUpper(CurrentObjectDataName));
+
+            // Generate an RDL string dynamically:
+            string rdlXml = DynamicRdlBuilder.GenerateDynamicRdl(
+                ClassType,
+                reportTitle: $"{CurrentReportNameWithoutDatabase} Report",
+                schemaPath: @$"{ReportsFolder}\Data\{CurrentObjectDataName}.xsd"
+            );
+
+            // You can then save the string to a .rdl file:
+            System.IO.File.WriteAllText(fileName, rdlXml);
+
+            Message = $"{CurrentReportNameWithoutDatabase} saved!";
             _LogService.WriteToLog(Message);
-            return;
+
+            // Add the database name to the CurrentReportName
+            CurrentReportName = $"{CurrentDatabaseName}/{CurrentReportNameWithoutDatabase}";
+
+            // ** Close the popup if visible
+            IsSaveReportPopupVisible = false;
+
+            // Reload the dropdown
+            await LoadReportListDropdownAsync();
+
+            // Load the Report
+            LoadReport(CurrentReportName);
         }
+        catch (Exception ex)
+        {
+            Message = ex.GetBaseException().Message;
+            _LogService.WriteToLog($"SaveReport() Error: {Message} - {ex.StackTrace.ToString()}");
 
-        // Load the code from the file
-        var code = System.IO.File.ReadAllText(codeFile);
-
-        // Get the Type for the class we want to generate the RDL for
-        var ClassType = XsdGenerator.GetTypeFromCode(code, DataService.FirstCharToUpper(CurrentObjectDataName));
-
-        // Generate an RDL string dynamically:
-        string rdlXml = DynamicRdlBuilder.GenerateDynamicRdl(
-            ClassType,
-            reportTitle: $"{CurrentReportNameWithoutDatabase} Report",
-            schemaPath: @$"{ReportsFolder}\Data\{CurrentObjectDataName}.xsd"
-        );
-
-        // You can then save the string to a .rdl file:
-        System.IO.File.WriteAllText(fileName, rdlXml);
-
-        Message = $"{CurrentReportNameWithoutDatabase} saved!";
-        _LogService.WriteToLog(Message);
-
-        // Add the database name to the CurrentReportName
-        CurrentReportName = $"{CurrentDatabaseName}/{CurrentReportNameWithoutDatabase}";
-
-        // ** Close the popup if visible
-        IsSaveReportPopupVisible = false;
-
-        // Reload the dropdown
-        await LoadReportListDropdownAsync();
-
-        // Load the Report
-        LoadReport(CurrentReportName);
+            // ** Close the popup if visible
+            IsSaveReportPopupVisible = false;
+        }
     }
 
     // *****************************************************************************************
@@ -1793,7 +1805,7 @@
     private async Task ImportReportAsync()
     {
         try
-        {           
+        {
             // Fix Report Name
             CurrentImportReportName = CurrentImportReportName.Replace(".rdl", "");
 
