@@ -17,7 +17,7 @@ namespace Controllers
             var col**CLASS NAME** = objDataloader.LoadParquet("**DATABASE NAME**","**FILE NAME**").Result;
 
             // Convert each row into a Dictionary<string, object>, then map that
-            // into a new **CLASS NAME** object
+            // into a new **CLASS NAME** object, using the index as the Id.
             var results = col**CLASS NAME**
                 .Select((row, index) =>
                 {
@@ -25,6 +25,8 @@ namespace Controllers
 
                     return new **CLASS NAME**
                     {
+                        // index is zero-based; add 1 if you want a one-based ID
+                        Id = index + 1,
 **DICTIONARY MAPPING**
                     };
                 })

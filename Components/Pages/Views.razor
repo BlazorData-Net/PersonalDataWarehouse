@@ -591,14 +591,33 @@ else
             ClassDefinition.AppendLine($"public class {DataService.FirstCharToUpper(CurrentViewNameWithoutDatabase)}");
             ClassDefinition.AppendLine("    {");
 
-            // Add an Id property to the class
-            ClassDefinition.AppendLine("        public int Id { get; set; }");
+            // See if there is a column named Id
+            bool hasId = false;
+
+            foreach (var column in columns)
+            {
+                if (column.ToLower() == "id")
+                {
+                    hasId = true;
+                    break;
+                }
+            }
+
+            // Only add the Id property if it doesn't exist
+            if (!hasId)
+            {
+                // Add an Id property to the class
+                ClassDefinition.AppendLine("        public int Id { get; set; }");
+            }
 
             // For each column in the DataTable, create a string property
             foreach (var column in columns)
             {
                 // Ensure the property name is a valid C# identifier
                 string propertyName = column.Replace(" ", "_");
+
+                // Replace - with _ to make it a valid C# identifier
+                propertyName = propertyName.Replace("-", "_");
 
                 ClassDefinition.AppendLine
                 ($"        public string {propertyName} {{ get; set; }}");
@@ -613,6 +632,9 @@ else
             {
                 // Replace spaces in the column name with underscores to make it a valid C# identifier
                 string propertyName = column.Replace(" ", "_");
+
+                // Replace - with _ to make it a valid C# identifier
+                propertyName = propertyName.Replace("-", "_");
 
                 // Build the line:
                 DictionaryMapping.AppendLine(

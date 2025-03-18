@@ -939,14 +939,33 @@ else
         ClassDefinition.AppendLine($"public class {DataService.FirstCharToUpper(Table)}");
         ClassDefinition.AppendLine("    {");
 
-        // Add an Id property to the class
-        ClassDefinition.AppendLine("        public int Id { get; set; }");
+        // See if there is a column named Id
+        bool hasId = false;
+
+        foreach (DataColumn column in dt.Columns)
+        {
+            if (column.ColumnName.ToLower() == "id")
+            {
+                hasId = true;
+                break;
+            }
+        }
+
+        // Only add the Id property if it doesn't exist
+        if (!hasId)
+        {
+            // Add an Id property to the class
+            ClassDefinition.AppendLine("        public int Id { get; set; }");
+        }
 
         // For each column in the DataTable, create a string property
         foreach (DataColumn column in dt.Columns)
         {
             // Ensure the property name is a valid C# identifier
             string propertyName = column.ColumnName.Replace(" ", "_");
+
+            // Replace - with _ to make it a valid C# identifier
+            propertyName = propertyName.Replace("-", "_");
 
             ClassDefinition.AppendLine
             ($"        public string {propertyName} {{ get; set; }}");
@@ -962,14 +981,29 @@ else
             // Replace spaces in the column name with underscores to make it a valid C# identifier
             string propertyName = column.ColumnName.Replace(" ", "_");
 
+            // Replace - with _ to make it a valid C# identifier
+            propertyName = propertyName.Replace("-", "_");
+
             // Build the line:
             DictionaryMapping.AppendLine(
                 $"                        {propertyName} = dict.ContainsKey(\"{propertyName}\") "
                 + "? dict[\"{propertyName}\"]?.ToString() : null,");
         }
 
+        string TemplateName = "";
+
+        // Determine the name of the template to use
+        if (!hasId)
+        {
+            TemplateName = "ClassId.txt";
+        }
+        else
+        {
+            TemplateName = "Class.txt";
+        }
+
         // ** Open the Class.txt template from Templates\Class.txt and replace the content with the codeBuilder
-        string templatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Templates", "class.txt");
+        string templatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Templates", TemplateName);
 
         // Read the content of the template file
         string templateContent = File.ReadAllText(templatePath);

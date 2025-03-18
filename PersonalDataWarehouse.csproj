@@ -97,6 +97,7 @@
       <None Remove="Templates\AITemplateReportPageFixCode.txt" />
       <None Remove="Templates\AITemplateReportPageSecondPass.txt" />
       <None Remove="Templates\Class.txt" />
+      <None Remove="Templates\ClassId.txt" />
       <None Remove="Templates\KqlAITemplate.txt" />
       <None Remove="Templates\View.txt" />
     </ItemGroup>
@@ -163,6 +164,9 @@
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </Content>
 	  <Content Include="Templates\Class.txt">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </Content>
+	  <Content Include="Templates\ClassId.txt">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </Content>
 	  <Content Include="Templates\KqlAITemplate.txt">
