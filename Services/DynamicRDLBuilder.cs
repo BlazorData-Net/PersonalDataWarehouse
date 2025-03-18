@@ -348,8 +348,6 @@
             return rdl;
         }
 
-
-
         private static string GetRdlTypeName(Type propType)
         {
             // If we have a known mapping, return it; otherwise default to System.String

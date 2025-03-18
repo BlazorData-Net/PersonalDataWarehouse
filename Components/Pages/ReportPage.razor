@@ -33,7 +33,7 @@
             @foreach (var Report in ReportList)
             {
                 <option value="@Report"
-                        selected="@(Report == CurrentReportName ? "selected" : null)">
+                selected="@(Report == CurrentReportName ? "selected" : null)">
                     @Report
                 </option>
             }
@@ -133,7 +133,7 @@
                                 </button>
                             </div>
                             <div @ref="pdfContainer" id="pdf-container"
-                                 style="border: 0px solid #ccc; width: 100%; height: 800px;"></div>
+                            style="border: 0px solid #ccc; width: 100%; height: 800px;"></div>
                         </div>
 
                     </div>
@@ -304,8 +304,8 @@
                         {
                             <div class="has-scrollbar" style="width: 100%; height: 110px; overflow: auto">
                                 <textarea @bind="AIMessage" maxlength="1000"
-                                          style="width: 100%; height: 100px; overflow: auto; resize: vertical;">
-                                        </textarea>
+                                style="width: 100%; height: 100px; overflow: auto; resize: vertical;">
+                                </textarea>
                             </div>
                             <select @bind="AutoFixOption">
                                 <option value="true" selected="@(AutoFixOption == "true" ? "selected" : null)">Auto-Fix any errors</option>
@@ -903,13 +903,30 @@
         // Create a DataTable
         DataTable dt = new DataTable("MyDataTable");
 
-        // Add an Id column
-        dt.Columns.Add("Id", typeof(int));
+        // See if there is a column named Id
+        bool hasId = false;
+
+        foreach (var field in fields)
+        {
+            if (field.ToLower() == "id")
+            {
+                hasId = true;
+                break;
+            }
+        }
+
+        if (!hasId)
+        {
+            // Add an Id column
+            dt.Columns.Add("Id", typeof(int));
+        }
 
         // Add columns for all fields (replace spaces with underscores)
         foreach (var field in fields)
         {
             string columnName = field.Replace(" ", "_");
+            columnName = columnName.Replace("-", "_");
+
             dt.Columns.Add(columnName, typeof(object));
         }
 
@@ -918,11 +935,18 @@
         foreach (var item in result)
         {
             DataRow newRow = dt.NewRow();
-            newRow["Id"] = i++;
+
+            // Add an Id column if it does not exist in the data
+            if (!hasId)
+            {
+                newRow["Id"] = i++;
+            }
 
             foreach (var field in fields)
             {
                 string columnName = field.Replace(" ", "_");
+                columnName = columnName.Replace("-", "_");
+
                 newRow[columnName] = item.ContainsKey(field) ? item[field] : null;
             }
 
