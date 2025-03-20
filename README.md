@@ -33,6 +33,8 @@ This tool allows you to:
     
 By doing the compute locally on your own computer, you avoid expensive cloud compute costs while enjoying the flexibility and control of your own system.
 
+https://github.com/user-attachments/assets/f33c1ea2-8c73-4274-b9bb-2793d3f0838e
+
 ![image](https://github.com/user-attachments/assets/0666d9a6-0da0-4780-9099-e919bb6fb839)
 
 ![image](https://github.com/user-attachments/assets/74238b49-7125-4861-a1e2-2f06c2d3710e)
