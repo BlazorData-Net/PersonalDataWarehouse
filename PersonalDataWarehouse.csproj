@@ -119,7 +119,7 @@
 		<PackageReference Include="Microsoft.AspNetCore.Routing" Version="2.3.0" />
 		<PackageReference Include="Microsoft.AspNetCore.Server.Kestrel" Version="2.3.0" />
 		<PackageReference Include="Microsoft.Extensions.AI.Ollama" Version="9.1.0-preview.1.25064.3" />
-		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.2" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.3" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.2" />
