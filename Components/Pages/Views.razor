@@ -160,6 +160,41 @@ else
     <div class="modal-backdrop fade show"></div>
 }
 
+@if (IsNewViewVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+
+                <div class="window glass active">
+                    <div class="title-bar">
+                        <div class="title-bar-text">New View</div>
+                        <div class="title-bar-controls">
+                            <button aria-label="Close" @onclick="CloseNewScriptPopup"></button>
+                        </div>
+                    </div>
+                    <div class="window-body has-space">
+                        <label>Select Language: </label>
+                        <select @onchange="@(async (args) =>
+                            {
+                                CurrentSelectedLanguageWizard = args.Value?.ToString();
+                            })">
+                            @foreach (var lng in LanguageList)
+                            {
+                                <option value="@lng">
+                                    @lng
+                                </option>
+                            }
+                        </select>
+                        &nbsp;&nbsp;
+                        <button @onclick="onLanguageSelectedAsync">Select</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
 
 @if (IsWizardVisible)
 {
@@ -382,6 +417,8 @@ else
     private string DataSchema = "";
     private string CurrentViewName = "";
     private string CurrentViewNameWithoutDatabase = string.Empty;
+    string CurrentSelectedLanguageWizard = "C#";
+    bool IsNewViewVisible { get; set; } = false;
 
     List<Suggestion> suggestions = new List<Suggestion>();
     List<string> colAllDatabases = new List<string>();
@@ -442,7 +479,7 @@ else
         }
         else
         {
-            CurrentScript = SampleCode;
+            CurrentScript = SampleCodeCSharp;
         }
     }
 
@@ -828,16 +865,43 @@ else
             }
             else
             {
-                CurrentScript = SampleCode;
+                CurrentScript = SampleCodeCSharp;
                 await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
             }
         }
     }
 
-    // New Script
+    // New View
 
-    private async Task NewScript()
+    private List<string> LanguageList = new List<string>
     {
+        "C#",
+        "Python"
+    };
+
+    private void NewScript()
+    {
+        IsNewViewVisible = true;
+    }
+
+    private void CloseNewScriptPopup()
+    {
+        IsNewViewVisible = false;
+    }
+
+    private async Task onLanguageSelectedAsync()
+    {
+        string SelectedCode = "";
+
+        if (CurrentSelectedLanguageWizard == "Python")
+        {
+            SelectedCode = SampleCodePython;
+        }
+        else if (CurrentSelectedLanguageWizard == "C#")
+        {
+            SelectedCode = SampleCodeCSharp;
+        }
+
         // Save the current script
         CurrentScript = await MonacoCodeEditor.GetCodeAsync();
 
@@ -847,10 +911,12 @@ else
             undoStack.Push(CurrentScript);
         }
 
-        CurrentScript = SampleCode;
+        CurrentScript = SelectedCode;
         CurrentViewName = "";
 
         await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
+
+        IsNewViewVisible = false;
     }
 
     // Table Wizard
@@ -945,7 +1011,7 @@ else
 
     private async Task Reset()
     {
-        CurrentScript = SampleCode;
+        CurrentScript = SampleCodeCSharp;
         await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
         CurrentViewName = ViewList.First();
         await LoadViewAsync(CurrentViewName);
@@ -1326,7 +1392,7 @@ else
     }
     #endregion
 
-    private string SampleCode = @"    using System;
+    private string SampleCodeCSharp = @"    using System;
     using System.Collections.Generic;
     using System.Linq;
     using System.Threading.Tasks;
@@ -1341,4 +1407,17 @@ else
             { ""LastName"", ""Doe"" }
         });
     }";
+
+    private string SampleCodePython = @"import asyncio
+
+async def return_result():
+    # Generate random-like (but static) data similar to C# example
+    result = [
+        {
+            ""EmployeeId"": ""1234"",
+            ""FirstName"": ""John"",
+            ""LastName"": ""Doe""
+        }
+    ]
+    return result";
 }
