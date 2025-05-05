@@ -175,15 +175,10 @@ else
                     </div>
                     <div class="window-body has-space">
                         <label>Select Language: </label>
-                        <select @onchange="@(async (args) =>
-                            {
-                                CurrentSelectedLanguageWizard = args.Value?.ToString();
-                            })">
+                        <select @bind="CurrentSelectedLanguageWizard">
                             @foreach (var lng in LanguageList)
                             {
-                                <option value="@lng">
-                                    @lng
-                                </option>
+                                <option value="@lng">@lng</option>
                             }
                         </select>
                         &nbsp;&nbsp;
