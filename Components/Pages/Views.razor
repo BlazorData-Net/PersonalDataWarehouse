@@ -106,7 +106,7 @@ else
             }
         </div>
         <CodeEditor @ref="@MonacoCodeEditor"
-        Language="csharp"
+        Language="@MonacoLanguage"
         Code="@CurrentScript"
         MinHeight="500px"
         Width="90%"
@@ -401,6 +401,7 @@ else
 
 @code {
     private CodeEditor MonacoCodeEditor { get; set; }
+    private string MonacoLanguage = "csharp";
     private bool ContentChanged { get; set; }
     private string CurrentScript { get; set; } = string.Empty;
 
@@ -516,6 +517,7 @@ else
             // Pop the last state from the undo stack and set it as the current text.
             CurrentScript = undoStack.Pop();
 
+            MonacoLanguage = DataService.GetDetectedLanguage(CurrentScript);
             await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
         }
     }
@@ -534,6 +536,7 @@ else
             // Pop the last undone state from the redo stack and set it as the current text.
             CurrentScript = redoStack.Pop();
 
+            MonacoLanguage = DataService.GetDetectedLanguage(CurrentScript);
             await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
         }
     }
@@ -790,6 +793,7 @@ else
             // Read contents into CurrentScript
             CurrentScript = System.IO.File.ReadAllText(fileName);
 
+            MonacoLanguage = DataService.GetDetectedLanguage(CurrentScript);
             await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
 
             // Update the Undo/Redo stacks
@@ -863,6 +867,7 @@ else
             else
             {
                 CurrentScript = SampleCodeCSharp;
+                MonacoLanguage = DataService.GetDetectedLanguage(CurrentScript);
                 await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
             }
         }
@@ -911,6 +916,7 @@ else
         CurrentScript = SelectedCode;
         CurrentViewName = "";
 
+        MonacoLanguage = DataService.GetDetectedLanguage(CurrentScript);
         await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
 
         IsNewViewVisible = false;
@@ -959,6 +965,7 @@ else
 
         CurrentSelectedTableWizard = "";
 
+        MonacoLanguage = DataService.GetDetectedLanguage(CurrentScript);
         await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
     }
 
@@ -1009,6 +1016,7 @@ else
     private async Task Reset()
     {
         CurrentScript = SampleCodeCSharp;
+        MonacoLanguage = DataService.GetDetectedLanguage(CurrentScript);
         await MonacoCodeEditor.UpdateCodeAsync(CurrentScript);
         CurrentViewName = ViewList.First();
         await LoadViewAsync(CurrentViewName);
@@ -1406,6 +1414,7 @@ else
             await _LogService.WriteToLogAsync($"View:AIbtn:Response - {AIResponse.Response}");
 
             // Update the code in the editor
+            MonacoLanguage = DataService.GetDetectedLanguage(AIResponse.Response);
             await MonacoCodeEditor.UpdateCodeAsync(AIResponse.Response);
         }
         catch (Exception ex)

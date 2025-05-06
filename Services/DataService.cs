@@ -327,7 +327,7 @@
         #endregion
 
         #region public string GenerateCreateTableScript(string tableName, IEnumerable<string> tableColumns, ConnectionType paramConnectionType)
-        public string GenerateCreateTableScript(string tableName, 
+        public string GenerateCreateTableScript(string tableName,
             IEnumerable<string> tableColumns,
             ConnectionType paramConnectionType)
         {
@@ -337,13 +337,13 @@
             script.AppendLine($"CREATE TABLE [{tableName}] (");
 
             // Make the first column the primary key named Id
-            if(paramConnectionType == ConnectionType.SQLServer)
+            if (paramConnectionType == ConnectionType.SQLServer)
                 script.AppendLine("    [Id] INT PRIMARY KEY IDENTITY(1,1),");
             else // Fabric Warehouse
                 script.AppendLine("    [_Id] VARCHAR(8000) NOT NULL,");
 
             foreach (var column in tableColumns.Select(c => c.Trim()))
-            {              
+            {
                 if (paramConnectionType == ConnectionType.SQLServer)
                     script.AppendLine($"    [{column}] NVARCHAR(MAX),");
                 else // Fabric Warehouse
@@ -392,6 +392,20 @@
             }
 
             return (parts[0], parts[1]);
+        }
+        #endregion
+
+        #region public static string GetDetectedLanguage(string paramCode)
+        public static string GetDetectedLanguage(string paramCode)
+        {
+            string language = "csharp";
+
+            if (paramCode.Contains("def load_data()"))
+            {
+                language = "python";
+            }
+
+            return language;
         }
         #endregion
     }
