@@ -8,6 +8,7 @@ using PersonalDataWarehouse.Services;
 using PersonalDataWarehouse.Model;
 using System.Data;
 using System.Net;
+using Microsoft.JSInterop;
 
 namespace PersonalDataWarehouse.Services
 {
@@ -31,6 +32,14 @@ namespace PersonalDataWarehouse.Services
     [LocalhostOnly]
     public class ReportController : ControllerBase
     {
+        private readonly IJSRuntime _jsRuntime; // Add a private field for IJSRuntime
+
+        // Constructor to inject IJSRuntime
+        public ReportController(IJSRuntime jsRuntime)
+        {
+            _jsRuntime = jsRuntime;
+        }
+
         [HttpGet("/api/GetStatus")]
         public IActionResult GetStatus()
         {
@@ -113,7 +122,7 @@ namespace PersonalDataWarehouse.Services
 
             IEnumerable<IDictionary<string, object>> result = new List<IDictionary<string, object>>();
 
-            Dataloader dataloader = new Dataloader();
+            Dataloader dataloader = new Dataloader(_jsRuntime);
 
             // Get the data based on the ClassType
             if (ClassType == "Table")

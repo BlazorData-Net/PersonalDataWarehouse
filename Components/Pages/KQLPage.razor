@@ -687,7 +687,7 @@ else
             StateHasChanged();
 
             IEnumerable<IDictionary<string, object>> DataSourceData = new List<IDictionary<string, object>>();
-            Dataloader dataloader = new Dataloader();
+            Dataloader dataloader = new Dataloader(JS);
             string DataName = "";
 
             // Load the data based on the CurrentSelectedTableWizard type

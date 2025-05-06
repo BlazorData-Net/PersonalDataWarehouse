@@ -20,6 +20,7 @@
 @using PersonalDataWarehouse.Model
 @using PersonalDataWarehouse.Models
 @using static PersonalDataWarehouse.Services.SettingsService
+@inject IJSRuntime JS
 @inject SettingsService SettingsService
 @inject DatabaseService databaseService
 @inject DataService DataService
@@ -1464,7 +1465,7 @@ else
         try
         {
             IEnumerable<IDictionary<string, object>> DataSourceData = new List<IDictionary<string, object>>();
-            Dataloader dataloader = new Dataloader();
+            Dataloader dataloader = new Dataloader(JS);
             string DataName = "";
 
             // Load the data based on the CurrentSelectedTableWizard type

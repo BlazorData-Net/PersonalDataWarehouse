@@ -881,7 +881,7 @@
 
         IEnumerable<IDictionary<string, object>> result = new List<IDictionary<string, object>>();
 
-        Dataloader dataloader = new Dataloader();
+        Dataloader dataloader = new Dataloader(jsRuntime);
 
         // Get the data based on the ClassType
         if (ClassType == "Table")

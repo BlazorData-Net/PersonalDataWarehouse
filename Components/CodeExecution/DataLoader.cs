@@ -1,10 +1,24 @@
 ﻿using CSScriptLib;
+using Microsoft.JSInterop;
 using PersonalDataWarehouse.Services;
 using Renci.SshNet.Messages;
 using System.Data;
 using System.Linq;
+using System.Text.Json.Nodes;
 public class Dataloader
 {
+    private readonly IJSRuntime _jsRuntime;
+
+    public Dataloader(IJSRuntime jsRuntime)
+    {
+        _jsRuntime = jsRuntime;
+    }
+
+    public Dataloader()
+    {
+
+    }
+
     public async Task<IEnumerable<IDictionary<string, object>>> LoadParquet(string DatabaseName, string TableName)
     {
         IEnumerable<IDictionary<string, object>> response = new List<IDictionary<string, object>>();
@@ -55,10 +69,48 @@ public class Dataloader
 
     public async Task<IEnumerable<IDictionary<string, object>>> RunDynamicCode(string paramCode)
     {
-        dynamic script = CSScript.Evaluator.LoadMethod(paramCode);
+        List<Dictionary<string, object>> dataRows = new List<Dictionary<string, object>>();
 
-        var result = await script.ReturnResult();
+        if (paramCode.Contains("def load_data()"))
+        {
+            // Python code
+            // Call JS to execute Python via Pyodide and get JSON
+            var json = await _jsRuntime.InvokeAsync<string>("runPythonScript", new object[] { paramCode });
 
-        return result as IEnumerable<IDictionary<string, object>>;
+            // Parse and flatten JSON into a table-friendly format
+            dataRows = new List<Dictionary<string, object>>();
+            var parsedArray = JsonNode.Parse(json)?.AsArray();
+
+            if (parsedArray != null)
+            {
+                foreach (var item in parsedArray)
+                {
+                    var dict = new Dictionary<string, object>();
+                    if (item is JsonObject obj)
+                    {
+                        foreach (var prop in obj)
+                        {
+                            dict[prop.Key] = prop.Value?.GetValue<object>() ?? "";
+                        }
+                    }
+                    dataRows.Add(dict);
+                }
+            }
+
+            return dataRows as IEnumerable<IDictionary<string, object>>;
+        }
+        else if (paramCode.Contains("public async Task<IEnumerable<IDictionary<string, object>>> ReturnResult()"))
+        {
+            // C# Code
+            dynamic script = CSScript.Evaluator.LoadMethod(paramCode);
+
+            var result = await script.ReturnResult();
+
+            return result as IEnumerable<IDictionary<string, object>>;
+        }
+        else
+        {
+            throw new InvalidOperationException("Invalid code.");
+        }
     }
 }

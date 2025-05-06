@@ -12,6 +12,8 @@
 @using PersonalDataWarehouse.Model
 @using MonacoRazor
 @using System.Data
+@using System.Text.Json.Nodes
+@inject IJSRuntime JSRuntime
 @inject DatabaseService databaseService
 @inject DataService DataService
 @inject SettingsService SettingsService
@@ -1109,13 +1111,55 @@ else
 
     public async Task<IEnumerable<IDictionary<string, object>>> RunDynamicCode(string paramCode)
     {
+        List<Dictionary<string, object>> dataRows = new();
+
         try
-        {
-            dynamic script = CSScript.Evaluator.LoadMethod(paramCode);
+        {            
+            if (paramCode.Contains("def load_data()"))
+            {
+                // Python code
+                // Call JS to execute Python via Pyodide and get JSON
+                var json = await JSRuntime.InvokeAsync<string>("runPythonScript", new object[] { paramCode });
 
-            var result = await script.ReturnResult();
+                // Parse and flatten JSON into a table-friendly format
+                dataRows = new List<Dictionary<string, object>>();
+                var parsedArray = JsonNode.Parse(json)?.AsArray();
 
-            return result as IEnumerable<IDictionary<string, object>>;
+                if (parsedArray != null)
+                {
+                    Message = "Loading Data";
+                    StateHasChanged();
+
+                    foreach (var item in parsedArray)
+                    {
+                        var dict = new Dictionary<string, object>();
+                        if (item is JsonObject obj)
+                        {
+                            foreach (var prop in obj)
+                            {
+                                dict[prop.Key] = prop.Value?.GetValue<object>() ?? "";
+                            }
+                        }
+                        dataRows.Add(dict);
+                    }
+                }
+
+                return dataRows as IEnumerable<IDictionary<string, object>>;
+            } 
+            else if (paramCode.Contains("public async Task<IEnumerable<IDictionary<string, object>>> ReturnResult()"))
+            {
+                // C# Code
+                dynamic script = CSScript.Evaluator.LoadMethod(paramCode);
+
+                var result = await script.ReturnResult();
+
+                return result as IEnumerable<IDictionary<string, object>>;
+            }
+            else
+            {
+                Message = "Invalid code.";
+                return null;
+            }            
         }
         catch (Exception ex)
         {
@@ -1403,16 +1447,19 @@ else
         });
     }";
 
-    private string SampleCodePython = @"import asyncio
+    private string SampleCodePython = @"
+# Import the pandas library, commonly used for data manipulation and analysis
+import pandas as pd
 
-async def return_result():
-    # Generate random-like (but static) data similar to C# example
-    result = [
-        {
-            ""EmployeeId"": ""1234"",
-            ""FirstName"": ""John"",
-            ""LastName"": ""Doe""
-        }
-    ]
-    return result";
+# Define a function named load_data
+def load_data():
+    # Create a DataFrame (a table-like data structure) manually using a list of dictionaries
+    # Each dictionary represents a row with column names as keys
+    df = pd.DataFrame([
+        {'Name': 'Alice', 'Age': 30},  # First row with Name = Alice and Age = 30
+        {'Name': 'Bob', 'Age': 25}     # Second row with Name = Bob and Age = 25
+    ])
+
+    # Return the created DataFrame to the caller
+    return df";
 }
