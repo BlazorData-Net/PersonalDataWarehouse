@@ -107,7 +107,7 @@
             // Remove any existing .xls, .xlsx, or .parquet files
             const files = pyodide.FS.readdir('/');
             for (const file of files) {
-                if (file.endsWith('.xls') || file.endsWith('.xlsx') || file.endsWith('.parquet')) {
+                if (file.endsWith('.parquet')) {
                     try {
                         pyodide.FS.unlink(`/${file}`);
                     } catch (err) {
@@ -121,27 +121,16 @@
             pyodide.FS.writeFile(`/${filename}`, bytes, { encoding: 'binary' });
         }
 
-        async function runPythonProcessing(filename) {
-            const pyodide = await pyodideReadyPromise;
-
-            // Install core packages
-            await pyodide.loadPackage("micropip");
-            await pyodide.loadPackage("pandas");
-            const micropip = pyodide.pyimport('micropip');
-            await micropip.install('openpyxl');
-
-            // If it's a Parquet file, install pyarrow (or fastparquet) for pd.read_parquet
-            if (filename.toLowerCase().endsWith('.parquet')) {
-                // try pyarrow; if that isn’t available, you can swap in 'fastparquet'
-                await micropip.install('pyarrow');
-            }
-        }
-
         async function runPythonScript(pythonCode) {
             let pyodide = await pyodideReadyPromise;
 
-            // Load the Pandas package
+            // Load the core packages
+            await pyodide.loadPackage("micropip");
             await pyodide.loadPackage("pandas");
+
+            const micropip = pyodide.pyimport('micropip');
+            // try pyarrow; if that isn’t available, you can swap in 'fastparquet'
+            await micropip.install('pyarrow');
 
             // Import necessary modules
             pyodide.runPython(`import json`);

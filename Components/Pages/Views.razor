@@ -219,6 +219,15 @@ else
                                 </option>
                             }
                         </select>
+                    </div>
+                    <div class="window-body has-space">
+                        <label>Select Language: </label>
+                        <select @bind="CurrentSelectedLanguageWizard">
+                            @foreach (var lng in LanguageList)
+                            {
+                                <option value="@lng">@lng</option>
+                            }
+                        </select>
                         &nbsp;&nbsp;
                         <button @onclick="onTableWizardAsync">Select</button>
                     </div>
@@ -944,22 +953,44 @@ else
         // Separate the view name from the database
         var (DatabaseName, TableName) = DataService.ExtractDatabaseAndTable(CurrentSelectedTableWizard);
 
-        CurrentScript = $"using System;\n";
-        CurrentScript += $"using System.Collections.Generic;\n";
-        CurrentScript += $"using System.Linq;\n";
-        CurrentScript += $"using System.Threading.Tasks;\n";
-        CurrentScript += $"\n";
-        CurrentScript += $"public async Task<IEnumerable<IDictionary<string, object>>> ReturnResult()\n";
-        CurrentScript += "{\n";
-        CurrentScript += $"    // Create a Dataloader \n";
-        CurrentScript += $"    Dataloader objDataloader = new Dataloader();\n";
-        CurrentScript += $"    // Call LoadParquet to load {TableName} into col{TableName} \n";
-        CurrentScript += $@"    var col{TableName} = await objDataloader.LoadParquet(""{DatabaseName}"",""{TableName}"");";
-        CurrentScript += $"\n";
-        CurrentScript += $"    // Return the results ToDictionary()  \n";
-        CurrentScript += $"    return col{TableName}.Select(row => row.ToDictionary()).Take(100).ToList();";
-        CurrentScript += "\n";
-        CurrentScript += "}\n";
+        if (CurrentSelectedLanguageWizard == "Python")
+        {
+            CurrentScript = $"# Import the pandas library for data manipulation\n";
+            CurrentScript += $"import pandas as pd\n";
+            CurrentScript += $"\n";
+            CurrentScript += $"# Define a function named load_data\n";
+            CurrentScript += $"def load_data():\n";
+            CurrentScript += $"    # Construct the file path using the database and table name\n";
+            CurrentScript += $"    filepath = '{DatabaseName}/{TableName}'\n";
+            CurrentScript += $"\n";
+            CurrentScript += $"    # Use pandas to read the Parquet file with read_parquet\n";
+            CurrentScript += $"    df = pd.read_parquet(filepath)\n";
+            CurrentScript += $"\n";
+            CurrentScript += $"    # Use the head() method to select only the top 10 rows of the DataFrame\n";
+            CurrentScript += $"    df_top10 = df.head(10)\n";
+            CurrentScript += $"\n";
+            CurrentScript += $"    # Return the top 10 rows as a DataFrame\n";
+            CurrentScript += $"    return df_top10\n";
+        }
+        else if (CurrentSelectedLanguageWizard == "C#")
+        {
+            CurrentScript = $"using System;\n";
+            CurrentScript += $"using System.Collections.Generic;\n";
+            CurrentScript += $"using System.Linq;\n";
+            CurrentScript += $"using System.Threading.Tasks;\n";
+            CurrentScript += $"\n";
+            CurrentScript += $"public async Task<IEnumerable<IDictionary<string, object>>> ReturnResult()\n";
+            CurrentScript += "{\n";
+            CurrentScript += $"    // Create a Dataloader \n";
+            CurrentScript += $"    Dataloader objDataloader = new Dataloader();\n";
+            CurrentScript += $"    // Call LoadParquet to load {TableName} into col{TableName} \n";
+            CurrentScript += $@"    var col{TableName} = await objDataloader.LoadParquet(""{DatabaseName}"",""{TableName}"");";
+            CurrentScript += $"\n";
+            CurrentScript += $"    // Return the results ToDictionary()  \n";
+            CurrentScript += $"    return col{TableName}.Select(row => row.ToDictionary()).Take(100).ToList();";
+            CurrentScript += "\n";
+            CurrentScript += "}\n";
+        }        
 
         CloseTableWizardPopup();
 
