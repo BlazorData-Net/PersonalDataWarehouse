@@ -101,25 +101,47 @@
             return bytes;
         }
 
-        async function writeFileToPyodide(filename, base64Data) {
+        async function clearFilesInPyodide() {
             const pyodide = await pyodideReadyPromise;
 
-            // Remove any existing .xls, .xlsx, or .parquet files
-            const files = pyodide.FS.readdir('/');
-            for (const file of files) {
-                if (file.endsWith('.parquet')) {
-                    try {
-                        pyodide.FS.unlink(`/${file}`);
-                    } catch (err) {
-                        console.warn(`Failed to remove file ${file}:`, err);
+            function deleteRecursively(path) {
+                try {
+                    const stat = pyodide.FS.stat(path);
+                    if (pyodide.FS.isDir(stat.mode)) {
+                        const entries = pyodide.FS.readdir(path).filter(e => e !== '.' && e !== '..');
+                        for (const entry of entries) {
+                            deleteRecursively(`${path}/${entry}`);
+                        }
+                        if (path !== '/') {
+                            pyodide.FS.rmdir(path);
+                        }
+                    } else {
+                        if (path.endsWith('.parquet')) {
+                            pyodide.FS.unlink(path);
+                        }
                     }
+                } catch (err) {
+                    console.warn(`Failed to process ${path}:`, err);
                 }
             }
 
-            // Write the new file
-            const bytes = base64ToUint8Array(base64Data);
-            pyodide.FS.writeFile(`/${filename}`, bytes, { encoding: 'binary' });
+            deleteRecursively('/');
         }
+
+        async function writeFileToPyodide(databasename, filename, base64Data) {
+            const pyodide = await pyodideReadyPromise;
+
+            // Ensure the directory exists
+            const dirPath = `/${databasename}`;
+            if (!pyodide.FS.analyzePath(dirPath).exists) {
+                pyodide.FS.mkdir(dirPath);
+            }
+
+            // Convert base64 to bytes and write the file
+            const bytes = base64ToUint8Array(base64Data);
+            pyodide.FS.writeFile(`${dirPath}/${filename}`, bytes, { encoding: 'binary' });
+        }
+
 
         async function runPythonScript(pythonCode) {
             let pyodide = await pyodideReadyPromise;

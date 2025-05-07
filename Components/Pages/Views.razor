@@ -44,7 +44,7 @@ else
                     @foreach (var view in ViewList)
                     {
                         <option value="@view"
-                        selected="@(view == CurrentViewName ? "selected" : null)">
+                                selected="@(view == CurrentViewName ? "selected" : null)">
                             @view
                         </option>
                     }
@@ -106,12 +106,12 @@ else
             }
         </div>
         <CodeEditor @ref="@MonacoCodeEditor"
-        Language="@MonacoLanguage"
-        Code="@CurrentScript"
-        MinHeight="500px"
-        Width="90%"
-        Margin="0px"
-        OnCompletionsRequested="GetCompletionsAsync" />
+                    Language="@MonacoLanguage"
+                    Code="@CurrentScript"
+                    MinHeight="500px"
+                    Width="90%"
+                    Margin="0px"
+                    OnCompletionsRequested="GetCompletionsAsync" />
     </div>
     <br />
 }
@@ -137,15 +137,15 @@ else
                         else
                         {
                             <RadzenDataGrid Data="@objDataParameters.data"
-                            ColumnWidth="200px"
-                            AllowFiltering="false" AllowPaging="true" AllowSorting="false">
+                                            ColumnWidth="200px"
+                                            AllowFiltering="false" AllowPaging="true" AllowSorting="false">
                                 <Columns>
                                     @foreach (var column in objDataParameters.columns)
                                     {
                                         <RadzenDataGridColumn @key=@column.Key
-                                        Title="@column.Key"
-                                        Type="column.Value"
-                                        Property="@PropertyAccess.GetDynamicPropertyExpression(column.Key, column.Value)">
+                                                              Title="@column.Key"
+                                                              Type="column.Value"
+                                                              Property="@PropertyAccess.GetDynamicPropertyExpression(column.Key, column.Value)">
                                             <Template>
                                                 @context[@column.Key]
                                             </Template>
@@ -187,6 +187,7 @@ else
                         <button @onclick="onLanguageSelectedAsync">Select</button>
                     </div>
                 </div>
+
             </div>
         </div>
     </div>
@@ -207,29 +208,32 @@ else
                         </div>
                     </div>
                     <div class="window-body has-space">
-                        <label>Select Table: </label>
-                        <select @onchange="@(async (args) =>
+                        <div>
+                            <label>Select Table: </label>
+                            <select @onchange="@(async (args) =>
                             {
                                 CurrentSelectedTableWizard = args.Value?.ToString();
                             })">
-                            @foreach (var table in TableList)
-                            {
-                                <option value="@table">
-                                    @table
-                                </option>
-                            }
-                        </select>
-                    </div>
-                    <div class="window-body has-space">
-                        <label>Select Language: </label>
-                        <select @bind="CurrentSelectedLanguageWizard">
-                            @foreach (var lng in LanguageList)
-                            {
-                                <option value="@lng">@lng</option>
-                            }
-                        </select>
-                        &nbsp;&nbsp;
-                        <button @onclick="onTableWizardAsync">Select</button>
+                                @foreach (var table in TableList)
+                                {
+                                    <option value="@table">
+                                        @table
+                                    </option>
+                                }
+                            </select>
+                        </div>
+                        <br />
+                        <div>
+                            <label>Select Language: </label>
+                            <select @bind="CurrentSelectedLanguageWizard">
+                                @foreach (var lng in LanguageList)
+                                {
+                                    <option value="@lng">@lng</option>
+                                }
+                            </select>
+                            &nbsp;&nbsp;
+                            <button @onclick="onTableWizardAsync">Select</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -263,7 +267,7 @@ else
                                     @foreach (var database in colAllDatabases)
                                     {
                                         <option value="@database"
-                                        selected="@(database == CurrentDatabaseName ? "selected" : null)">
+                                                selected="@(database == CurrentDatabaseName ? "selected" : null)">
                                             @database
                                         </option>
                                     }
@@ -308,8 +312,8 @@ else
                         {
                             <div class="has-scrollbar" style="width: 100%; height: 110px; overflow: auto">
                                 <textarea @bind="AIMessage" maxlength="1000"
-                                style="width: 100%; height: 100px; overflow: auto; resize: vertical;">
-                                </textarea>
+                                          style="width: 100%; height: 100px; overflow: auto; resize: vertical;">
+                                        </textarea>
                             </div>
                             <br />
                             <button @onclick="AIbtn">Submit</button>
@@ -990,7 +994,7 @@ else
             CurrentScript += $"    return col{TableName}.Select(row => row.ToDictionary()).Take(100).ToList();";
             CurrentScript += "\n";
             CurrentScript += "}\n";
-        }        
+        }
 
         CloseTableWizardPopup();
 
@@ -1153,7 +1157,7 @@ else
         List<Dictionary<string, object>> dataRows = new();
 
         try
-        {            
+        {
             if (paramCode.Contains("def load_data()"))
             {
                 // Python code
@@ -1181,7 +1185,7 @@ else
                 }
 
                 return dataRows as IEnumerable<IDictionary<string, object>>;
-            } 
+            }
             else if (paramCode.Contains("public async Task<IEnumerable<IDictionary<string, object>>> ReturnResult()"))
             {
                 // C# Code
@@ -1195,7 +1199,7 @@ else
             {
                 Message = "Invalid code.";
                 return null;
-            }            
+            }
         }
         catch (Exception ex)
         {
