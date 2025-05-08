@@ -424,7 +424,15 @@
 
             foreach (Match match in matches)
             {
-                var relativePath = match.Groups["path"].Value;
+                string FinalMatch = match.Groups["path"].Value;
+
+                // If match begins with a / remove it
+                if (FinalMatch.StartsWith("/"))
+                {
+                    FinalMatch = FinalMatch.Substring(1);
+                }
+
+                var relativePath = FinalMatch;
 
                 // Add \Parquet
                 relativePath = relativePath.Replace("/", "/Parquet/");

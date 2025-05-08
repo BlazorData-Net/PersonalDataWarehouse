@@ -966,7 +966,7 @@ else
             CurrentScript += $"# Define a function named load_data\n";
             CurrentScript += $"def load_data():\n";
             CurrentScript += $"    # Construct the file path using the database and table name\n";
-            CurrentScript += $"    filepath = '{DatabaseName}/{TableName}.parquet'\n";
+            CurrentScript += $"    filepath = '/{DatabaseName}/{TableName}.parquet'\n";
             CurrentScript += $"\n";
             CurrentScript += $"    # Use pandas to read the Parquet file with read_parquet\n";
             CurrentScript += $"    df = pd.read_parquet(filepath)\n";
