@@ -622,7 +622,7 @@ else
             await System.IO.File.WriteAllTextAsync(fileName, CurrentScript);
 
             // Execute the code (because we need to get the columns returned)
-            var objResult = await RunDynamicCode(CurrentScript, CurrentDatabaseName);
+            var objResult = await RunDynamicCode(CurrentScript);
 
             List<string> columns = new List<string>();
 
@@ -1115,7 +1115,7 @@ else
             StateHasChanged();
 
             // Execute the code
-            var objResult = await RunDynamicCode(CurrentScript, Database);
+            var objResult = await RunDynamicCode(CurrentScript);
 
             if (objResult != null)
             {
@@ -1153,7 +1153,7 @@ else
         }
     }
 
-    public async Task<IEnumerable<IDictionary<string, object>>> RunDynamicCode(string paramCode, string DatabaseName)
+    public async Task<IEnumerable<IDictionary<string, object>>> RunDynamicCode(string paramCode)
     {
         List<Dictionary<string, object>> dataRows = new();
 
@@ -1187,6 +1187,9 @@ else
 
                     // Get the file name from the path
                     var fileName = Path.GetFileName(filePath);
+
+                    // Get Database name from the path
+                    var DatabaseName = DataService.GetDatabaseName(filePath);
 
                     await JSRuntime.InvokeAsync<string>("writeFileToPyodide", new object[] { DatabaseName, fileName, base64 });
                 }
@@ -1276,7 +1279,7 @@ else
         var (Database, View) = DataService.ExtractDatabaseAndTable(CurrentViewName);
 
         // Execute the code
-        var objResult = await RunDynamicCode(CurrentScript, Database);
+        var objResult = await RunDynamicCode(CurrentScript);
 
         if (objResult == null)
         {
@@ -1351,7 +1354,7 @@ else
         var (Database, View) = DataService.ExtractDatabaseAndTable(CurrentViewName);
 
         // Execute the code
-        var objResult = await RunDynamicCode(CurrentScript, Database);
+        var objResult = await RunDynamicCode(CurrentScript);
 
         if (objResult == null)
         {

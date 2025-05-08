@@ -455,6 +455,28 @@
             }
 
             return result;
+        }
+        #endregion
+
+        #region public static string GetDatabaseName(string path)
+        public static string GetDatabaseName(string path)
+        {
+            const string marker = @"/Databases\";
+
+            if (string.IsNullOrEmpty(path))
+                return null;
+
+            int startIndex = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (startIndex == -1)
+                return null;
+
+            startIndex += marker.Length;
+            int endIndex = path.IndexOf('\\', startIndex);
+
+            if (endIndex == -1)
+                return path.Substring(startIndex); // It's the last segment
+            else
+                return path.Substring(startIndex, endIndex - startIndex);
         } 
         #endregion
     }
