@@ -67,6 +67,13 @@ public class Dataloader
         return response;
     }
 
+    // Called by dynamic classes created before the 5/2025 change to add the database parameter
+    // for python support
+    public async Task<IEnumerable<IDictionary<string, object>>> RunDynamicCode(string paramCode)
+    {
+        return await RunDynamicCode(paramCode, "Default");
+    }
+
     public async Task<IEnumerable<IDictionary<string, object>>> RunDynamicCode(string paramCode, string DatabaseName)
     {
         List<Dictionary<string, object>> dataRows = new List<Dictionary<string, object>>();
