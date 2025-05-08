@@ -59,7 +59,7 @@ public class Dataloader
             string paramCode = System.IO.File.ReadAllText(fileName);
 
             // Convert the DataTable to a List of Dictionaries
-            response = await RunDynamicCode(paramCode);
+            response = await RunDynamicCode(paramCode, DatabaseName);
 
             return response;
         }
@@ -67,13 +67,42 @@ public class Dataloader
         return response;
     }
 
-    public async Task<IEnumerable<IDictionary<string, object>>> RunDynamicCode(string paramCode)
+    public async Task<IEnumerable<IDictionary<string, object>>> RunDynamicCode(string paramCode, string DatabaseName)
     {
         List<Dictionary<string, object>> dataRows = new List<Dictionary<string, object>>();
 
         if (paramCode.Contains("def load_data()"))
         {
             // Python code
+
+            // Get the referenced Parquet files in the Python script
+            var referencedFiles = DataService.ExtractParquetPaths(paramCode);
+
+            // Call JS to execute Python via Pyodide and clearFilesInPyodide
+            await _jsRuntime.InvokeAsync<string>("clearFilesInPyodide");
+
+            // Load the referenced Parquet files into Pyodide
+            foreach (var filePath in referencedFiles)
+            {
+                // Open filePath as a FileStream
+                using var FileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+                System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+
+                using var memoryStream = new MemoryStream();
+                await FileStream.CopyToAsync(memoryStream);
+                memoryStream.Position = 0;
+                var bytes = memoryStream.ToArray();
+
+                // Convert to Base64 for JS interop
+                var base64 = Convert.ToBase64String(bytes);
+
+                // Get the file name from the path
+                var fileName = Path.GetFileName(filePath);
+
+                await _jsRuntime.InvokeAsync<string>("writeFileToPyodide", new object[] { DatabaseName, fileName, base64 });
+            }
+
             // Call JS to execute Python via Pyodide and get JSON
             var json = await _jsRuntime.InvokeAsync<string>("runPythonScript", new object[] { paramCode });
 

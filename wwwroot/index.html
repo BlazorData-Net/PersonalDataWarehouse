@@ -142,7 +142,6 @@
             pyodide.FS.writeFile(`${dirPath}/${filename}`, bytes, { encoding: 'binary' });
         }
 
-
         async function runPythonScript(pythonCode) {
             let pyodide = await pyodideReadyPromise;
 

@@ -12,6 +12,8 @@
     using ClosedXML.Excel;
     using System.Text;
     using static PersonalDataWarehouse.Services.SettingsService;
+    using System.Text.RegularExpressions;
+    using Microsoft.Maui.Storage;
 
     public class DataService
     {
@@ -407,6 +409,45 @@
 
             return language;
         }
+        #endregion
+
+        #region public static List<string> ExtractParquetPaths(string pythonCode)
+        public static List<string> ExtractParquetPaths(string pythonCode)
+        {
+            var result = new List<string>();
+
+            String ParentFolder = $"{System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments)}/PersonalDataWarehouse/Databases";
+
+            // Match lines like: Variable = 'Folder/File'
+            var pattern = @"['""](?<path>[^'""]+/[^'""]+)['""]";
+            var matches = Regex.Matches(pythonCode, pattern);
+
+            foreach (Match match in matches)
+            {
+                var relativePath = match.Groups["path"].Value;
+
+                // Add \Parquet
+                relativePath = relativePath.Replace("/", "/Parquet/");
+
+                // Convert to Windows-style absolute path
+                var windowsPath = Path.Combine(ParentFolder, relativePath.Replace("/", "\\"));
+
+                if (!result.Contains(windowsPath))
+                {
+                    if (System.IO.File.Exists(windowsPath))
+                    {
+                        result.Add(windowsPath);
+                    }
+                    else
+                    {
+                        // Throw an exception if the file does not exist
+                        throw new FileNotFoundException($"The referenced table at '{windowsPath}' does not exist.");
+                    }
+                }
+            }
+
+            return result;
+        } 
         #endregion
     }
 }

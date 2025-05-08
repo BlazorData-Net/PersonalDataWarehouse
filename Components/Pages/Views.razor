@@ -13,6 +13,7 @@
 @using MonacoRazor
 @using System.Data
 @using System.Text.Json.Nodes
+@using System.IO
 @inject IJSRuntime JSRuntime
 @inject DatabaseService databaseService
 @inject DataService DataService
@@ -44,7 +45,7 @@ else
                     @foreach (var view in ViewList)
                     {
                         <option value="@view"
-                                selected="@(view == CurrentViewName ? "selected" : null)">
+                        selected="@(view == CurrentViewName ? "selected" : null)">
                             @view
                         </option>
                     }
@@ -106,12 +107,12 @@ else
             }
         </div>
         <CodeEditor @ref="@MonacoCodeEditor"
-                    Language="@MonacoLanguage"
-                    Code="@CurrentScript"
-                    MinHeight="500px"
-                    Width="90%"
-                    Margin="0px"
-                    OnCompletionsRequested="GetCompletionsAsync" />
+        Language="@MonacoLanguage"
+        Code="@CurrentScript"
+        MinHeight="500px"
+        Width="90%"
+        Margin="0px"
+        OnCompletionsRequested="GetCompletionsAsync" />
     </div>
     <br />
 }
@@ -137,15 +138,15 @@ else
                         else
                         {
                             <RadzenDataGrid Data="@objDataParameters.data"
-                                            ColumnWidth="200px"
-                                            AllowFiltering="false" AllowPaging="true" AllowSorting="false">
+                            ColumnWidth="200px"
+                            AllowFiltering="false" AllowPaging="true" AllowSorting="false">
                                 <Columns>
                                     @foreach (var column in objDataParameters.columns)
                                     {
                                         <RadzenDataGridColumn @key=@column.Key
-                                                              Title="@column.Key"
-                                                              Type="column.Value"
-                                                              Property="@PropertyAccess.GetDynamicPropertyExpression(column.Key, column.Value)">
+                                        Title="@column.Key"
+                                        Type="column.Value"
+                                        Property="@PropertyAccess.GetDynamicPropertyExpression(column.Key, column.Value)">
                                             <Template>
                                                 @context[@column.Key]
                                             </Template>
@@ -267,7 +268,7 @@ else
                                     @foreach (var database in colAllDatabases)
                                     {
                                         <option value="@database"
-                                                selected="@(database == CurrentDatabaseName ? "selected" : null)">
+                                        selected="@(database == CurrentDatabaseName ? "selected" : null)">
                                             @database
                                         </option>
                                     }
@@ -312,8 +313,8 @@ else
                         {
                             <div class="has-scrollbar" style="width: 100%; height: 110px; overflow: auto">
                                 <textarea @bind="AIMessage" maxlength="1000"
-                                          style="width: 100%; height: 100px; overflow: auto; resize: vertical;">
-                                        </textarea>
+                                style="width: 100%; height: 100px; overflow: auto; resize: vertical;">
+                                </textarea>
                             </div>
                             <br />
                             <button @onclick="AIbtn">Submit</button>
@@ -621,7 +622,7 @@ else
             await System.IO.File.WriteAllTextAsync(fileName, CurrentScript);
 
             // Execute the code (because we need to get the columns returned)
-            var objResult = await RunDynamicCode(CurrentScript);
+            var objResult = await RunDynamicCode(CurrentScript, CurrentDatabaseName);
 
             List<string> columns = new List<string>();
 
@@ -965,7 +966,7 @@ else
             CurrentScript += $"# Define a function named load_data\n";
             CurrentScript += $"def load_data():\n";
             CurrentScript += $"    # Construct the file path using the database and table name\n";
-            CurrentScript += $"    filepath = '{DatabaseName}/{TableName}'\n";
+            CurrentScript += $"    filepath = '{DatabaseName}/{TableName}.parquet'\n";
             CurrentScript += $"\n";
             CurrentScript += $"    # Use pandas to read the Parquet file with read_parquet\n";
             CurrentScript += $"    df = pd.read_parquet(filepath)\n";
@@ -1114,7 +1115,7 @@ else
             StateHasChanged();
 
             // Execute the code
-            var objResult = await RunDynamicCode(CurrentScript);
+            var objResult = await RunDynamicCode(CurrentScript, Database);
 
             if (objResult != null)
             {
@@ -1152,7 +1153,7 @@ else
         }
     }
 
-    public async Task<IEnumerable<IDictionary<string, object>>> RunDynamicCode(string paramCode)
+    public async Task<IEnumerable<IDictionary<string, object>>> RunDynamicCode(string paramCode, string DatabaseName)
     {
         List<Dictionary<string, object>> dataRows = new();
 
@@ -1161,6 +1162,35 @@ else
             if (paramCode.Contains("def load_data()"))
             {
                 // Python code
+
+                // Get the referenced Parquet files in the Python script
+                var referencedFiles = DataService.ExtractParquetPaths(paramCode);
+
+                // Call JS to execute Python via Pyodide and clearFilesInPyodide
+                await JSRuntime.InvokeAsync<string>("clearFilesInPyodide");
+
+                // Load the referenced Parquet files into Pyodide
+                foreach (var filePath in referencedFiles)
+                {
+                    // Open filePath as a FileStream
+                    using var FileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+                    System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+
+                    using var memoryStream = new MemoryStream();
+                    await FileStream.CopyToAsync(memoryStream);
+                    memoryStream.Position = 0;
+                    var bytes = memoryStream.ToArray();
+
+                    // Convert to Base64 for JS interop
+                    var base64 = Convert.ToBase64String(bytes);
+
+                    // Get the file name from the path
+                    var fileName = Path.GetFileName(filePath);
+
+                    await JSRuntime.InvokeAsync<string>("writeFileToPyodide", new object[] { DatabaseName, fileName, base64 });
+                }
+
                 // Call JS to execute Python via Pyodide and get JSON
                 var json = await JSRuntime.InvokeAsync<string>("runPythonScript", new object[] { paramCode });
 
@@ -1242,8 +1272,11 @@ else
         //  Save the view
         await SaveViewAsync();
 
+        // Separate the view name from the database
+        var (Database, View) = DataService.ExtractDatabaseAndTable(CurrentViewName);
+
         // Execute the code
-        var objResult = await RunDynamicCode(CurrentScript);
+        var objResult = await RunDynamicCode(CurrentScript, Database);
 
         if (objResult == null)
         {
@@ -1314,8 +1347,11 @@ else
         //  Save the view
         await SaveViewAsync();
 
+        // Separate the view name from the database
+        var (Database, View) = DataService.ExtractDatabaseAndTable(CurrentViewName);
+
         // Execute the code
-        var objResult = await RunDynamicCode(CurrentScript);
+        var objResult = await RunDynamicCode(CurrentScript, Database);
 
         if (objResult == null)
         {
