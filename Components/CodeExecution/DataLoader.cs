@@ -118,13 +118,22 @@ public class Dataloader
                 foreach (var item in parsedArray)
                 {
                     var dict = new Dictionary<string, object>();
+
                     if (item is JsonObject obj)
                     {
                         foreach (var prop in obj)
                         {
-                            dict[prop.Key] = prop.Value?.GetValue<object>() ?? "";
+                            if(prop.Value != null)
+                            {
+                                dict[prop.Key] = Convert.ToString(prop.Value);
+                            }
+                            else
+                            {
+                                dict[prop.Key] = null;
+                            }
                         }
                     }
+
                     dataRows.Add(dict);
                 }
             }
