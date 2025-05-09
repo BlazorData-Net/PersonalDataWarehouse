@@ -151,6 +151,9 @@
 
 	<ItemGroup>
 	  <Content Include="Resources\Images\appiconscalea.png" />
+	  <Content Include="Templates\AITemplatePython.txt">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </Content>
 	  <Content Include="Templates\AITemplate.txt">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </Content>
