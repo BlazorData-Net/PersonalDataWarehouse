@@ -316,6 +316,15 @@ else
                                 style="width: 100%; height: 100px; overflow: auto; resize: vertical;">
                                 </textarea>
                             </div>
+                            <div>
+                                <label>Select Language: </label>
+                                <select @bind="CurrentSelectedLanguageWizard">
+                                    @foreach (var lng in LanguageList)
+                                    {
+                                        <option value="@lng">@lng</option>
+                                    }
+                                </select>
+                            </div>
                             <br />
                             <button @onclick="AIbtn">Submit</button>
                         }
@@ -1459,7 +1468,16 @@ else
             StateHasChanged();
 
             // ** Open the View.txt template from Templates\View.txt and replace the content with the codeBuilder
-            string templatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Templates", "AITemplate.txt");
+            string templatePath = "";
+
+            if (CurrentSelectedLanguageWizard == "Python")
+            {
+
+            }
+            else if (CurrentSelectedLanguageWizard == "C#")
+            {
+                templatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Templates", "AITemplate.txt");
+            }
 
             // Read the content of the template file
             string templateContent = File.ReadAllText(templatePath);
