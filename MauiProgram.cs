@@ -48,6 +48,8 @@ namespace PersonalDataWarehouse
             builder.Services.AddSingleton<OrchestratorMethods>();
             builder.Services.AddSingleton<DatabaseService>();
 
+            builder.Services.AddScoped<DataloaderPython>();
+
             // This is required by Excel service to parse strings in binary BIFF2-5 Excel documents
             // encoded with DOS-era code pages.
             System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);

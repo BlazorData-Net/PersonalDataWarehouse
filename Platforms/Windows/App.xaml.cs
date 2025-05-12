@@ -38,6 +38,10 @@ public partial class App : MauiWinUIApplication
             options.ListenAnyIP(5000);
         });
 
+        // For IJSRuntime support
+        builder.Services.AddMauiBlazorWebView();
+        builder.Services.AddScoped<DataloaderPython>();
+
         // Add controllers or minimal API endpoints
         builder.Services.AddControllers();
 

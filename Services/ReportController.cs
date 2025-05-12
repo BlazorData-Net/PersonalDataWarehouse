@@ -32,12 +32,12 @@ namespace PersonalDataWarehouse.Services
     [LocalhostOnly]
     public class ReportController : ControllerBase
     {
-        private readonly IJSRuntime _jsRuntime; // Add a private field for IJSRuntime
+        private readonly DataloaderPython _dataloaderPython; 
 
         // Constructor to inject IJSRuntime
-        public ReportController(IJSRuntime jsRuntime)
+        public ReportController(DataloaderPython dataloaderPython)
         {
-            _jsRuntime = jsRuntime;
+            _dataloaderPython = dataloaderPython; // Assign the injected IJSRuntime to the private field
         }
 
         [HttpGet("/api/GetStatus")]
@@ -122,18 +122,16 @@ namespace PersonalDataWarehouse.Services
 
             IEnumerable<IDictionary<string, object>> result = new List<IDictionary<string, object>>();
 
-            Dataloader dataloader = new Dataloader(_jsRuntime);
-
             // Get the data based on the ClassType
             if (ClassType == "Table")
             {
                 // Get the data from the Parquet file
-                result = await dataloader.LoadParquet(database, ClassName);
+                result = await _dataloaderPython.LoadParquet(database, ClassName);
             }
             else // View
             {
                 // Get the data from the View file
-                result = await dataloader.LoadView(database, ClassName);
+                result = await _dataloaderPython.LoadView(database, ClassName);
             }
 
             // Get the fields from the first record (ensure result is not empty)
