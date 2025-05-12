@@ -6,11 +6,11 @@ using Renci.SshNet.Messages;
 using System.Data;
 using System.Linq;
 using System.Text.Json.Nodes;
-public class DataloaderPython
+public class DataLoaderReports
 {
     private readonly IJSRuntime _jsRuntime;
 
-    public DataloaderPython(IJSRuntime jsRuntime) 
+    public DataLoaderReports(IJSRuntime jsRuntime) 
     {
         _jsRuntime = jsRuntime;
     }

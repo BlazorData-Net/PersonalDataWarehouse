@@ -32,9 +32,9 @@ namespace PersonalDataWarehouse.Services
     [LocalhostOnly]
     public class ReportController : ControllerBase
     {
-        private readonly DataloaderPython _dataloaderPython; 
+        private readonly DataLoaderReports _dataloaderPython; 
 
-        public ReportController(DataloaderPython dataloaderPython)
+        public ReportController(DataLoaderReports dataloaderPython)
         {
             _dataloaderPython = dataloaderPython; 
         }

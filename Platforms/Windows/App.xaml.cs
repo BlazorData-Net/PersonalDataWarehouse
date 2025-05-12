@@ -40,7 +40,7 @@ public partial class App : MauiWinUIApplication
 
         // For IJSRuntime support
         builder.Services.AddMauiBlazorWebView();
-        builder.Services.AddScoped<DataloaderPython>();
+        builder.Services.AddScoped<DataLoaderReports>();
 
         // Add controllers or minimal API endpoints
         builder.Services.AddControllers();
