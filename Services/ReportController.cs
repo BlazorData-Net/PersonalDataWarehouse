@@ -34,10 +34,9 @@ namespace PersonalDataWarehouse.Services
     {
         private readonly DataloaderPython _dataloaderPython; 
 
-        // Constructor to inject IJSRuntime
         public ReportController(DataloaderPython dataloaderPython)
         {
-            _dataloaderPython = dataloaderPython; // Assign the injected IJSRuntime to the private field
+            _dataloaderPython = dataloaderPython; 
         }
 
         [HttpGet("/api/GetStatus")]
