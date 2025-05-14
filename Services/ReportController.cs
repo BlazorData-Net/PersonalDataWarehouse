@@ -141,8 +141,12 @@ namespace PersonalDataWarehouse.Services
             // Create a DataTable
             System.Data.DataTable dt = new System.Data.DataTable("MyDataTable");
 
-            // Add an Id column
-            dt.Columns.Add("Id", typeof(int));
+            // If result does not have a colum called Id add it to the DataTable
+            if (!fields.Contains("Id"))
+            {
+                // Add an Id column
+                dt.Columns.Add("Id", typeof(int));
+            }
 
             // Add columns for all fields (replace spaces with underscores)
             foreach (var field in fields)
