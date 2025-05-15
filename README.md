@@ -1,3 +1,5 @@
+Attention: [Talk on Tuesday, May 27, 2025 6:00 PM to 7:00 PM PDT - Build Your Own Personal Data Warehouse—No Cloud Required](https://github.com/BlazorData-Net/PersonalDataWarehouse/discussions/2)
+
 ![image](https://github.com/user-attachments/assets/b1fd8715-3ce6-4c35-884d-eb6dd43bd7d6)
 
 [![Microsoft Store](https://get.microsoft.com/images/en-us%20light.svg)](https://apps.microsoft.com/detail/9P86KCCLLJV0?rtc=1&hl=en-us&gl=US) 
