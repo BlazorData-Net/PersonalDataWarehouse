@@ -58,3 +58,5 @@ https://github.com/user-attachments/assets/f33c1ea2-8c73-4274-b9bb-2793d3f0838e
 ### Code created by the AI to display the differences
 
 ![coderequired](https://github.com/user-attachments/assets/f0ff7c35-653a-4266-bea8-c61d8e373cca)
+
+Contact: Webmaster@BlazorData.net
