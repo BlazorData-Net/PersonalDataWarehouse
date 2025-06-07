@@ -1,5 +1,3 @@
-**Attention:** [Talk on Tuesday, May 27, 2025 6:00 PM to 7:00 PM PDT - Build Your Own Personal Data Warehouse—No Cloud Required](https://github.com/BlazorData-Net/PersonalDataWarehouse/discussions/2)
-
 ![image](https://github.com/user-attachments/assets/b1fd8715-3ce6-4c35-884d-eb6dd43bd7d6)
 
 [![Microsoft Store](https://get.microsoft.com/images/en-us%20light.svg)](https://apps.microsoft.com/detail/9P86KCCLLJV0?rtc=1&hl=en-us&gl=US) 
@@ -9,7 +7,7 @@
 #### Install with Winget 
 Run this command in your terminal: **winget install "Personal Data Warehouse"**
 
-[Click here for YouTube videos](https://www.youtube.com/@blazordata)
+[Click here for YouTube videos](https://www.youtube.com/@blazordata) / [Click here for the Quick-Start Tutorial](https://blazordata.net/ViewBlogPost/7)
 
 ## Overview
 Scam artists make a lot of promises about AI, often claiming it can do things it cannot, such as predicting the future. What AI is truly good at is calculating. This application allows you to import your data, transform it using AI to perform calculations, and report and export the results.
