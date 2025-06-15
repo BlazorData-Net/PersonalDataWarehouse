@@ -47,16 +47,8 @@ https://github.com/user-attachments/assets/f33c1ea2-8c73-4274-b9bb-2793d3f0838e
 
 ![image](https://github.com/user-attachments/assets/0666d9a6-0da0-4780-9099-e919bb6fb839)
 
-![image](https://github.com/user-attachments/assets/74238b49-7125-4861-a1e2-2f06c2d3710e)
-
-![image](https://github.com/user-attachments/assets/9c51354b-7f69-45f6-9e73-ad79df4edb53)
-
 ## Example Use Case: Display differences in two tables
 
 ![image](https://github.com/user-attachments/assets/f8bb6d1f-d066-4a7a-a841-d463bad88d0c)
-
-### Code created by the AI to display the differences
-
-![coderequired](https://github.com/user-attachments/assets/f0ff7c35-653a-4266-bea8-c61d8e373cca)
 
 Contact: Webmaster@BlazorData.net
