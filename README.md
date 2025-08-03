@@ -9,7 +9,7 @@ Run this command in your terminal: **winget install "Personal Data Warehouse"**
 
 [Build Your Own Free Personal Data Warehouse with AI & Blazor Hybrid – No Cloud Needed](https://www.youtube.com/watch?v=IX4gGww9dj0) 
 
-[Click here for YouTube videos](https://www.youtube.com/@blazordata) / [Click here for the Quick-Start Tutorial](https://blazordata.net/ViewBlogPost/7) 
+[Click here for YouTube videos](https://www.youtube.com/playlist?list=PL3p-EMx77XlCcsGuaC6a_or1BdKIB6cNe) / [Click here for the Quick-Start Tutorial](https://blazordata.net/ViewBlogPost/7) 
 
 ## Overview
 Scam artists make a lot of promises about AI, often claiming it can do things it cannot, such as predicting the future. What AI is truly good at is calculating. This application allows you to import your data, transform it using AI to perform calculations, and report and export the results.
