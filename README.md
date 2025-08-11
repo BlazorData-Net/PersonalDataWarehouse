@@ -12,7 +12,7 @@ Run this command in your terminal: **winget install "Personal Data Warehouse"**
 [Click here for YouTube videos](https://www.youtube.com/playlist?list=PL3p-EMx77XlCcsGuaC6a_or1BdKIB6cNe) / [Click here for the Quick-Start Tutorial](https://blazordata.net/ViewBlogPost/7) 
 
 ## Overview
-Scam artists make a lot of promises about AI, often claiming it can do things it cannot, such as predicting the future. What AI is truly good at is calculating. This application allows you to import your data, transform it using AI to perform calculations, and report and export the results.
+Some people make a lot of promises about AI, often claiming it can do things it cannot, such as predicting the future. What AI is truly good at is calculating. This application allows you to import your data, transform it using AI to perform calculations, and report and export the results.
 
 ## Features
 This application enables you to create your own Personal Data Warehouse by:
