@@ -1,10 +1,23 @@
 ![image](https://github.com/user-attachments/assets/b1fd8715-3ce6-4c35-884d-eb6dd43bd7d6)
 
+#### Your personal AI data analyst — on your machine.
+* Import files, clean and transform with AI, explore with charts, and export polished results — all in one open‑source, local‑first app built with Blazor.
+
+
+✨ What you can do
+
+* Import your data from CSV/Excel and other common formats.
+* Ask questions in plain English. Personal Data Warehouse writes the code for you.
+* Clean & transform: join, filter, sort, compute new columns, and fix messy data.
+* Visualize with clear charts and quick summaries.
+* Export results back to files or SQL server or Fabric Warehouse.
+
+#### Install with Winget 
+
 [![Microsoft Store](https://get.microsoft.com/images/en-us%20light.svg)](https://apps.microsoft.com/detail/9P86KCCLLJV0?rtc=1&hl=en-us&gl=US) 
 
 [Click here to download and install it from the Microsoft Store](https://apps.microsoft.com/detail/9P86KCCLLJV0?hl=en-us&gl=US&ocid=pdpshare)
 
-#### Install with Winget 
 Run this command in your terminal: **winget install "Personal Data Warehouse"**
 
 [Build Your Own Free Personal Data Warehouse with AI & Blazor Hybrid – No Cloud Needed](https://www.youtube.com/watch?v=IX4gGww9dj0) 
@@ -52,5 +65,29 @@ https://github.com/user-attachments/assets/f33c1ea2-8c73-4274-b9bb-2793d3f0838e
 ## Example Use Case: Display differences in two tables
 
 ![image](https://github.com/user-attachments/assets/f8bb6d1f-d066-4a7a-a841-d463bad88d0c)
+
+🙌 Credits
+
+Created and maintained by Michael Washington and contributors. Built with Blazor and the .NET platform.
+
+##### Additional Components Used
+
+- [BlazorDatasheet](https://www.nuget.org/packages/BlazorDatasheet/)
+- [Blazored.LocalStorage](https://www.nuget.org/packages/Blazored.LocalStorage/)
+- [Blazored.TextEditor](https://www.nuget.org/packages/Blazored.TextEditor/)
+- [ClosedXML](https://www.nuget.org/packages/ClosedXML/)
+- [CS-Script](https://www.nuget.org/packages/CS-Script/)
+- [CsvHelper](https://www.nuget.org/packages/CsvHelper/)
+- [ExcelDataReader](https://www.nuget.org/packages/ExcelDataReader/)
+- [KustoLoco.Core](https://www.nuget.org/packages/KustoLoco.Core/)
+- [Microsoft.Extensions.AI](https://www.nuget.org/packages/Microsoft.Extensions.AI/)
+- [Parquet.Net](https://www.nuget.org/packages/Parquet.Net/)
+- [Pyodide](https://github.com/pyodide/pyodide/)
+- [Radzen.Blazor](https://www.nuget.org/packages/Radzen.Blazor/)
+- [ReportViewerCore.NETCore](https://www.nuget.org/packages/ReportViewerCore.NETCore/)
+- [SimpleBlazorMonaco](https://www.nuget.org/packages/SimpleBlazorMonaco/)
+- [SSH.NET](https://www.nuget.org/packages/SSH.NET/)
+- [System.Linq.Dynamic.Core](https://www.nuget.org/packages/System.Linq.Dynamic.Core/)
+
 
 Contact: Webmaster@BlazorData.net
