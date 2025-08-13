@@ -68,7 +68,7 @@ https://github.com/user-attachments/assets/f33c1ea2-8c73-4274-b9bb-2793d3f0838e
 
 🙌 Credits
 
-Created and maintained by Michael Washington and contributors. Built with Blazor and the .NET platform.
+Created and maintained by Michael Washington. Built with Blazor and the .NET platform.
 
 ##### Additional Components Used
 
