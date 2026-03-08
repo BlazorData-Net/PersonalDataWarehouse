@@ -1,5 +1,5 @@
 ![image](https://github.com/user-attachments/assets/b1fd8715-3ce6-4c35-884d-eb6dd43bd7d6)
-
+# The Future of Sovereign Data Management
 #### Your personal AI data analyst — on your machine.
 * Import files, clean and transform with AI, explore with charts, and export polished results — all in one open‑source, local‑first app built with Blazor.
 
